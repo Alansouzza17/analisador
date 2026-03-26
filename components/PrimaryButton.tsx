@@ -15,12 +15,17 @@ export default function PrimaryButton({ title, onPress }: Props) {
 
 const styles = StyleSheet.create({
   btn: {
-    backgroundColor: "#4F46E5",
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: "center",
-    marginTop: 12,
-  },
+  backgroundColor: "#fff",
+  paddingVertical: 16,
+  borderRadius: 50,
+  alignItems: "center",
+  marginTop: 30,
+  shadowColor: "#000",
+  shadowOpacity: 0.25,
+  shadowRadius: 6,
+  elevation: 6,
+},
+
   text: {
     color: "#fff",
     fontSize: 18,

@@ -1,18 +1,15 @@
 import TopBar from "@/components/TopBar";
+import { API_URL } from "@/services/api";
 import { LinearGradient } from "expo-linear-gradient";
 import { useState } from "react";
-import {
-  ActivityIndicator,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity
-} from "react-native";
+import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View, } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-const API_URL = "http://192.168.1.17:3333";
 
 type IAResponse = {
+  nicho: string;
+  score: number;
+  bioSugerida: string;
   resumo: string;
   pontosFortes: string;
   pontosFracos: string;
@@ -21,61 +18,87 @@ type IAResponse = {
 
 export default function Analysis() {
   const [result, setResult] = useState<IAResponse | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loadingIA, setLoadingIA] = useState(false);
+  const [error, setError] = useState("");
 
   async function analisarPerfil() {
     try {
-      setLoading(true);
-
-      const response = await fetch(`${API_URL}/ia/analyze`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          profile: { username: "meuperfil" },
-          posts: []
-        })
-      });
-
+      setLoadingIA(true);
+      setError("");
+      const response = await fetch(`${API_URL}/ia/analyze`);
       const data = await response.json();
       setResult(data);
-
-    } catch (error) {
-      console.error(error);
-      alert("Erro ao analisar perfil");
+    } catch (e) {
+      setError("Erro ao analisar perfil");
     } finally {
-      setLoading(false);
+      setLoadingIA(false);
     }
   }
 
   return (
-    <LinearGradient colors={["#FF8A00", "#E91E63", "#673AB7"]} style={{ flex: 1 }}>
-      <TopBar title="Análise" />
+    <LinearGradient
+      colors={["#7B1FA2", "#E91E63"]}
+      style={{ flex: 1 }}
+    >
+      <TopBar title="Análise do Perfil" />
 
       <SafeAreaView style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={styles.container}>
-
-          <TouchableOpacity style={styles.analyzeBtn} onPress={analisarPerfil}>
-            <Text style={styles.analyzeText}>Analisar Perfil</Text>
-          </TouchableOpacity>
-
-          {loading && <ActivityIndicator size="large" style={{ marginTop: 20 }} />}
-
-          {result && (
-            <>
-              <Text style={styles.sectionTitle}>Resumo</Text>
-              <Text style={styles.text}>{result.resumo}</Text>
-
-              <Text style={styles.sectionTitle}>Pontos Fortes</Text>
-              <Text style={styles.text}>{result.pontosFortes}</Text>
-
-              <Text style={styles.sectionTitle}>Pontos Fracos</Text>
-              <Text style={styles.text}>{result.pontosFracos}</Text>
-
-              <Text style={styles.sectionTitle}>Sugestões</Text>
-              <Text style={styles.text}>{result.sugestoes}</Text>
-            </>
+          {!result && !loadingIA && (
+            <TouchableOpacity style={styles.btn} onPress={analisarPerfil}>
+              <Text style={styles.btnText}>Analisar Perfil Agora</Text>
+            </TouchableOpacity>
           )}
 
+          {loadingIA && (
+            <View style={styles.center}>
+              <ActivityIndicator size="large" />
+              <Text style={styles.text}>Analisando perfil...</Text>
+            </View>
+          )}
+
+          {error ? (
+            <Text style={styles.error}>{error}</Text>
+          ) : null}
+
+          {result && !loadingIA && (
+            <>
+              <View style={styles.scoreCard}>
+                <Text style={styles.scoreText}>{result.score}</Text>
+                <Text style={styles.scoreLabel}>SCORE</Text>
+              </View>
+
+              <View style={styles.card}>
+                <Text style={styles.sectionTitle}>🎯 Nicho</Text>
+                <Text style={styles.text}>{result.nicho}</Text>
+              </View>
+
+              <View style={styles.bioBox}>
+                <Text style={styles.sectionTitle}>📝 Bio Sugerida</Text>
+                <Text style={styles.bio}>{result.bioSugerida}</Text>
+              </View>
+
+              <View style={styles.card}>
+                <Text style={styles.sectionTitle}>📊 Resumo</Text>
+                <Text style={styles.text}>{result.resumo}</Text>
+              </View>
+
+              <View style={styles.card}>
+                <Text style={styles.sectionTitle}>✅ Pontos Fortes</Text>
+                <Text style={styles.text}>{result.pontosFortes}</Text>
+              </View>
+
+              <View style={styles.card}>
+                <Text style={styles.sectionTitle}>⚠️ Pontos Fracos</Text>
+                <Text style={styles.text}>{result.pontosFracos}</Text>
+              </View>
+
+              <View style={styles.card}>
+                <Text style={styles.sectionTitle}>🚀 Sugestões</Text>
+                <Text style={styles.text}>{result.sugestoes}</Text>
+              </View>
+            </>
+          )}
         </ScrollView>
       </SafeAreaView>
     </LinearGradient>
@@ -85,31 +108,83 @@ export default function Analysis() {
 const styles = StyleSheet.create({
   container: { padding: 20 },
 
-  analyzeBtn: {
-    backgroundColor: "#fff",
-    paddingVertical: 14,
-    borderRadius: 14,
+  center: {
     alignItems: "center",
-    marginBottom: 20
+    marginTop: 40,
   },
 
-  analyzeText: {
+  btn: {
+    marginTop: 80,
+    backgroundColor: "#fff",
+    paddingVertical: 16,
+    borderRadius: 20,
+    alignItems: "center",
+  },
+
+  btnText: {
     fontSize: 16,
     fontWeight: "700",
-    color: "#333"
+    color: "#333",
+  },
+
+  scoreCard: {
+    backgroundColor: "#FFD54F",
+    width: 150,
+    height: 150,
+    borderRadius: 75,
+    alignSelf: "center",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 20,
+  },
+
+  scoreText: {
+    fontSize: 42,
+    fontWeight: "800",
+    color: "#333",
+  },
+
+  scoreLabel: {
+    fontWeight: "700",
+    color: "#333",
+  },
+
+  card: {
+    backgroundColor: "rgba(255,255,255,0.15)",
+    padding: 16,
+    borderRadius: 16,
+    marginTop: 10,
   },
 
   sectionTitle: {
-    fontSize: 22,
+    fontSize: 18,
     fontWeight: "700",
-    marginTop: 20,
-    color: "#fff"
+    color: "#fff",
+    marginBottom: 6,
   },
 
   text: {
-    fontSize: 16,
+    color: "#fff",
     opacity: 0.9,
-    marginVertical: 10,
-    color: "#fff"
-  }
+    fontSize: 15,
+  },
+
+  bioBox: {
+    backgroundColor: "rgba(0,0,0,0.25)",
+    padding: 14,
+    borderRadius: 16,
+    marginVertical: 14,
+  },
+
+  bio: {
+    color: "#FFD54F",
+    fontWeight: "600",
+    fontSize: 16,
+  },
+
+  error: {
+    color: "#fff",
+    textAlign: "center",
+    marginTop: 40,
+  },
 });

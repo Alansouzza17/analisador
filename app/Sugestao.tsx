@@ -1,84 +1,71 @@
 import TopBar from "@/components/TopBar";
+import { API_URL } from "@/services/api";
 import * as ImagePicker from "expo-image-picker";
 import { LinearGradient } from "expo-linear-gradient";
-import { useRouter } from "expo-router";
 import { useState } from "react";
-import { ActivityIndicator, Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import {
+  ActivityIndicator,
+  Image,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
+} from "react-native";
 
 type AIResult = {
-  melhor: string;
+  avaliacao: string;
+  publico: string;
+  estilo: string;
+  melhorias: string;
   legenda: string;
   hashtags: string;
 };
 
-const API_URL = "http://192.168.1.17:3333";
 
 export default function Sugestao() {
   const [image, setImage] = useState<string | null>(null);
+  const [base64, setBase64] = useState<string | null>(null);
   const [result, setResult] = useState<AIResult | null>(null);
   const [loading, setLoading] = useState(false);
-
-  const router = useRouter();
 
   async function pickImage() {
     const res = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
-      quality: 0.6,
-      base64: true
+      quality: 0.7,
+      base64: true,
     });
 
     if (!res.canceled) {
       setImage(res.assets[0].uri);
+      setBase64(res.assets[0].base64 || null);
       setResult(null);
-
-      const base64 = res.assets[0].base64;
-
-if (base64) {
-  analyzeImageWithAI(base64);
-} else {
-  alert("Erro ao carregar imagem.");
-}
-
     }
   }
 
-  async function analyzeImageWithAI(base64Image?: string) {
+  async function analyzeImageWithAI() {
+    if (!base64) return;
+
     try {
       setLoading(true);
 
-      const response = await fetch(`${API_URL}/ia/analyze`, {
+      const response = await fetch(`${API_URL}/ia/photo`
+, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          profile: {
-            username: "meuperfil"
-          },
-          posts: [
-            {
-              image: base64Image,
-              caption: "Foto enviada pelo usuário"
-            }
-          ]
+         image: base64
         })
+
       });
 
       const data = await response.json();
 
-      // simples parse da resposta da IA
-      setResult({
-        melhor: data.analysis || "Boa composição e iluminação.",
-        legenda: "Aproveitando o momento ✨",
-        hashtags: "#insta #foto #trend"
-      });
+      setResult(data);
 
     } catch (error) {
       console.error(error);
-      setResult({
-        melhor: "Erro ao analisar imagem.",
-        legenda: "Tente novamente.",
-        hashtags: "-"
-      });
     } finally {
       setLoading(false);
     }
@@ -89,34 +76,82 @@ if (base64) {
       colors={["#FEDA75", "#FA7E1E", "#D62976", "#962FBF", "#4F5BD5"]}
       style={styles.gradient}
     >
-      <TopBar title="Postagem" />
-      
-      <View style={styles.container}>
-        <Text style={styles.title}>Sugestão de Post</Text>
+      <TopBar title="Sugestão de Post" />
+
+      <ScrollView contentContainerStyle={styles.container}>
+        <Text style={styles.title}>Sugestão Inteligente</Text>
 
         <TouchableOpacity style={styles.uploadBtn} onPress={pickImage}>
           <Text style={styles.uploadText}>
-            {image ? "Trocar Foto" : "Enviar Foto"}
+            {image ? "Trocar imagem" : "Selecionar imagem"}
           </Text>
         </TouchableOpacity>
 
-        {image && <Image source={{ uri: image }} style={styles.preview} />}
-
-        {loading && <ActivityIndicator size="large" style={{ marginTop: 20 }} />}
-
-        {result && !loading && (
-          <View style={styles.resultBox}>
-            <Text style={styles.resultTitle}>📊 Sua melhor opção</Text>
-            <Text style={styles.resultText}>{result.melhor}</Text>
-
-            <Text style={styles.resultTitle}>📝 Legenda sugerida</Text>
-            <Text style={styles.resultText}>{result.legenda}</Text>
-
-            <Text style={styles.resultTitle}>🏷️ Hashtags ideais</Text>
-            <Text style={styles.resultText}>{result.hashtags}</Text>
+        {image && (
+          <View style={styles.imageCard}>
+            <Image source={{ uri: image }} style={styles.preview} />
           </View>
         )}
-      </View>
+
+        {image && !loading && (
+          <TouchableOpacity style={styles.analyzeBtn} onPress={analyzeImageWithAI}>
+            <Text style={styles.analyzeText}>Analisar com IA</Text>
+          </TouchableOpacity>
+        )}
+
+        {loading && (
+          <View style={styles.loadingBox}>
+            <ActivityIndicator size="large" />
+            <Text style={styles.loadingText}>Analisando imagem...</Text>
+          </View>
+        )}
+
+        {result && !loading && (
+  <>
+    <View style={styles.card}>
+      <Text style={styles.cardTitle}>📸 Avaliação da Foto</Text>
+      <Text style={styles.text}>{result.avaliacao}</Text>
+    </View>
+
+    <View style={styles.card}>
+      <Text style={styles.cardTitle}>🎯 Público-alvo</Text>
+      <Text style={styles.text}>{result.publico}</Text>
+    </View>
+
+    <View style={styles.card}>
+      <Text style={styles.cardTitle}>🎨 Estilo Visual</Text>
+      <Text style={styles.text}>{result.estilo}</Text>
+    </View>
+
+    <View style={styles.card}>
+      <Text style={styles.cardTitle}>⚠️ Melhorias</Text>
+      <Text style={styles.text}>{result.melhorias}</Text>
+    </View>
+
+    <View style={styles.card}>
+      <Text style={styles.cardTitle}>📝 Legenda</Text>
+      <Text style={styles.text}>{result.legenda}</Text>
+    </View>
+
+    <View style={styles.card}>
+  <Text style={styles.cardTitle}>🏷️ Hashtags</Text>
+  <View style={styles.tagBox}>
+    {(result?.hashtags ?? "")
+      .toString()
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((tag, index) => (
+        <Text key={index} style={styles.tag}>
+          {tag}
+        </Text>
+      ))}
+  </View>
+</View>
+
+  </>
+)}
+
+      </ScrollView>
     </LinearGradient>
   );
 }
@@ -126,7 +161,7 @@ const styles = StyleSheet.create({
   container: { padding: 20, paddingTop: 70 },
 
   title: {
-    fontSize: 28,
+    fontSize: 26,
     fontWeight: "800",
     color: "#fff",
     textAlign: "center",
@@ -136,9 +171,9 @@ const styles = StyleSheet.create({
   uploadBtn: {
     backgroundColor: "#fff",
     paddingVertical: 14,
-    borderRadius: 12,
+    borderRadius: 14,
     alignItems: "center",
-    marginBottom: 20,
+    marginBottom: 10,
   },
 
   uploadText: {
@@ -147,31 +182,78 @@ const styles = StyleSheet.create({
     color: "#333",
   },
 
+  imageCard: {
+    backgroundColor: "rgba(255,255,255,0.12)",
+    borderRadius: 18,
+    padding: 10,
+    marginTop: 15,
+  },
+
   preview: {
     width: "100%",
-    height: 250,
-    borderRadius: 16,
-    marginVertical: 20,
+    height: 240,
+    borderRadius: 14,
   },
 
-  resultBox: {
-    backgroundColor: "rgba(255,255,255,0.15)",
-    padding: 18,
-    borderRadius: 16,
-    marginTop: 10,
+  analyzeBtn: {
+    backgroundColor: "#fff",
+    marginTop: 12,
+    paddingVertical: 12,
+    borderRadius: 14,
+    alignItems: "center",
   },
 
-  resultTitle: {
+  analyzeText: {
+    fontWeight: "700",
+    fontSize: 16,
+    color: "#333",
+  },
+
+  loadingBox: {
+    marginTop: 20,
+    alignItems: "center",
+  },
+
+  loadingText: {
     color: "#fff",
+    marginTop: 8,
+    opacity: 0.85,
+  },
+
+  card: {
+    backgroundColor: "rgba(255,255,255,0.15)",
+    padding: 16,
+    borderRadius: 16,
+    marginTop: 14,
+  },
+
+  cardTitle: {
     fontSize: 18,
     fontWeight: "700",
-    marginTop: 10,
+    color: "#fff",
+    marginBottom: 6,
   },
 
-  resultText: {
+  text: {
     color: "#fff",
-    opacity: 0.9,
     fontSize: 15,
-    marginTop: 4,
+    opacity: 0.9,
+  },
+
+  tagBox: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    marginTop: 8,
+  },
+
+  tag: {
+    backgroundColor: "rgba(255,255,255,0.2)",
+    color: "#fff",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 20,
+    marginRight: 8,
+    marginBottom: 8,
+    fontSize: 13,
   },
 });

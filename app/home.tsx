@@ -1,85 +1,201 @@
-import TopBar from "@/components/TopBar";
+import { API_URL } from "@/services/api";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import { useState } from "react";
-import { ImageBackground, ScrollView, StyleSheet, Text } from "react-native";
-import Input from "../components/Input";
-import PrimaryButton from "../components/PrimaryButton";
+import { useEffect, useState } from "react";
+import { ActivityIndicator, Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+
+
+type PerfilInstagram = {
+  username: string;
+  media_count: number;
+  account_type: string;
+  profile_picture_url?: string; // só aparece quando usar Graph API
+};
 
 export default function Home() {
   const router = useRouter();
-  const [username, setUsername] = useState("");
+  const [perfil, setPerfil] = useState<PerfilInstagram | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    carregarPerfil();
+  }, []);
+
+  async function carregarPerfil() {
+    try {
+      const res = await fetch(`${API_URL}/instagram/profile`);
+      const data = await res.json();
+      setPerfil(data);
+    } catch (err) {
+      console.error("Erro ao buscar perfil:", err);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+   const [nome, setNome] = useState<string | null>(null);
+
+useEffect(() => {
+  (async () => {
+    const savedName = await AsyncStorage.getItem("@user_name");
+    setNome(savedName);
+  })();
+}, []);
+
+async function handleLogout() {
+  await AsyncStorage.removeItem("@user_name");
+  router.replace("/");
+}
 
 
   return (
-    <ImageBackground
-      source={require("../assets/images/bg-home.png")}
-      style={styles.background}
-      resizeMode="cover"
-    >
-      <LinearGradient
-        colors={["rgba(0,0,0,0.4)", "rgba(0,0,0,0.6)"]}
-        style={styles.gradient}
-      >
-        <TopBar title="Perfil" />
-        
-        <ScrollView contentContainerStyle={styles.container}>
-         
+    <LinearGradient colors={["#7B1FA2", "#E91E63"]} style={styles.container}>
+      <Text style={styles.title}>InstaAnalyser</Text>
+      <Text style={styles.subtitle}>Seu assistente de crescimento no Instagram</Text>
+      
+      {nome && (
+    <Text style={{ color: "#fff", fontSize: 18, marginBottom: 8 }}>
+    Olá, {nome} 👋
+   </Text>
+    )}
 
-          <Text style={{ color: "#fff" }}>Digite seu nome de usuário:</Text>
-
-          <Input
-            placeholder="@"
-            value={username}
-            onChangeText={setUsername}
+      {/* CARD DO PERFIL */}
+      {loading ? (
+        <ActivityIndicator size="large" color="#fff" style={{ marginVertical: 20 }} />
+      ) : perfil ? (
+        <View style={styles.profileCard}>
+          <Image
+            source={
+              perfil.profile_picture_url
+                ? { uri: perfil.profile_picture_url }
+                : require("../assets/images/perfil.png")
+            }
+            style={styles.avatar}
           />
 
+          <View>
+            <Text style={styles.username}>@{perfil.username}</Text>
+            <Text style={styles.info}>📸 Posts: {perfil.media_count}</Text>
+            <Text style={styles.info}>🏷 Tipo: {perfil.account_type}</Text>
+          </View>
+        </View>
+      ) : (
+        <Text style={styles.error}>Não foi possível carregar o perfil</Text>
+      )}
 
-          <PrimaryButton
-            title="Buscar"
-            onPress={() => router.push(`/profile?user=${username}`)}
-          />
+      {/* BOTÕES */}
+      <View style={styles.card}>
+        <TouchableOpacity style={styles.btn} onPress={() => router.push("/analysis")}>
+          <Text style={styles.btnIcon}>📊</Text>
+          <Text style={styles.btnText}>Analisar Perfil</Text>
+        </TouchableOpacity>
 
-        </ScrollView>
-      </LinearGradient>
-    </ImageBackground>
+        <TouchableOpacity style={styles.btn} onPress={() => router.push("/Sugestao")}>
+          <Text style={styles.btnIcon}>📸</Text>
+          <Text style={styles.btnText}>Sugestão de Post</Text>
+        </TouchableOpacity>
+      </View>
+
+      <TouchableOpacity onPress={handleLogout} style={{ marginTop: 16 }}>
+  <Text style={{ color: "#fff", textAlign: "center", opacity: 0.8 }}>
+    Sair
+  </Text>
+</TouchableOpacity>
+
+
+      <Text style={styles.footer}>Powered by IA ✨</Text>
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
-  background: {
-    flex: 1,
-  },
-  gradient: {
-    flex: 1,
-  },
   container: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
     padding: 20,
-    paddingTop: 80,
   },
+
   title: {
-    fontSize: 30,
+    fontSize: 32,
     fontWeight: "800",
-    textAlign: "center",
     color: "#fff",
+  },
+
+  subtitle: {
+    fontSize: 14,
+    opacity: 0.85,
+    color: "#fff",
+    marginBottom: 14,
+  },
+
+  profileCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.15)",
+    padding: 14,
+    borderRadius: 16,
+    width: "100%",
     marginBottom: 20,
   },
-  centerArrow: {
-    textAlign: "center",
-    fontSize: 40,
-    marginTop: 20,
-    color: "#fff",
+
+  avatar: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    marginRight: 12,
+    backgroundColor: "#ccc",
   },
-   btn: {
-    backgroundColor: "#4F46E5",
-    paddingVertical: 14,
-    borderRadius: 12,
+
+  username: {
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 16,
+  },
+
+  info: {
+    color: "#fff",
+    opacity: 0.9,
+    fontSize: 14,
+  },
+
+  card: {
+    width: "100%",
+    backgroundColor: "rgba(255,255,255,0.1)",
+    borderRadius: 20,
+    padding: 20,
+  },
+
+  btn: {
+    backgroundColor: "#fff",
+    flexDirection: "row",
     alignItems: "center",
-    marginTop: 12,
+    padding: 14,
+    borderRadius: 14,
+    marginVertical: 8,
   },
-  text: {
+
+  btnIcon: {
+    fontSize: 20,
+    marginRight: 10,
+  },
+
+  btnText: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#333",
+  },
+
+  footer: {
+    marginTop: 25,
     color: "#fff",
-    fontSize: 18,
-    fontWeight: "600",
+    opacity: 0.7,
+    fontSize: 12,
+  },
+
+  error: {
+    color: "#fff",
+    marginBottom: 20,
   },
 });
