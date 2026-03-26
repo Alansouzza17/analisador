@@ -1,1 +1,1 @@
-export const API_URL = "http://192.168.1.172:3333";
+export const API_URL = "https://analisador-api.onrender.com";

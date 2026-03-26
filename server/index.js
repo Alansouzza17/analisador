@@ -7,6 +7,8 @@ import fetch from "node-fetch";
 
 const PORT = process.env.PORT || 3333;
 const HOST = "0.0.0.0";
+const BASE_URL =
+  process.env.BASE_URL || "https://analisador-api.onrender.com";
 
 const app = express();
 app.use(cors());
@@ -223,20 +225,15 @@ async function getInstagramPosts() {
   return data.data;
 }
 
-/* ===============================
-   TESTE
-================================ */
 app.get("/", (req, res) => {
   res.json({
     ok: true,
     message: "Servidor rodando",
     port: PORT,
+    baseUrl: BASE_URL,
   });
 });
 
-/* ===============================
-   INSTAGRAM BASIC - PERFIL
-================================ */
 app.get("/instagram/profile", async (req, res) => {
   try {
     const data = await getInstagramProfile();
@@ -250,9 +247,6 @@ app.get("/instagram/profile", async (req, res) => {
   }
 });
 
-/* ===============================
-   INSTAGRAM BASIC - POSTS
-================================ */
 app.get("/instagram/posts", async (req, res) => {
   try {
     const posts = await getInstagramPosts();
@@ -266,9 +260,6 @@ app.get("/instagram/posts", async (req, res) => {
   }
 });
 
-/* ===============================
-   IA ANALYZE
-================================ */
 app.get("/ia/analyze", async (req, res) => {
   try {
     const posts = await getInstagramPosts();
@@ -351,9 +342,6 @@ REGRAS:
   }
 });
 
-/* ===============================
-   IA FOTO
-================================ */
 app.post("/ia/photo", async (req, res) => {
   try {
     const image = req.body?.image;
@@ -428,7 +416,7 @@ Regras:
 
 app.get("/auth/instagram", (req, res) => {
   const redirectUri = encodeURIComponent(
-    "http://192.168.1.172:3333/auth/instagram/callback"
+    `${BASE_URL}/auth/instagram/callback`
   );
 
   const url =
@@ -455,10 +443,7 @@ app.get("/auth/instagram/callback", async (req, res) => {
     params.append("client_id", process.env.IG_CLIENT_ID);
     params.append("client_secret", process.env.IG_CLIENT_SECRET);
     params.append("grant_type", "authorization_code");
-    params.append(
-      "redirect_uri",
-      "http://192.168.1.172:3333/auth/instagram/callback"
-    );
+    params.append("redirect_uri", `${BASE_URL}/auth/instagram/callback`);
     params.append("code", code);
 
     const tokenResponse = await fetch(tokenUrl, {
@@ -496,5 +481,5 @@ app.get("/auth/instagram/callback", async (req, res) => {
 });
 
 app.listen(PORT, HOST, () => {
-  console.log(`Servidor rodando em http://${HOST}:${PORT}`);
+  console.log(`Servidor rodando em ${BASE_URL}`);
 });
