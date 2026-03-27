@@ -565,6 +565,65 @@ app.get("/auth/meta/instagram-media", async (req, res) => {
   }
 });
 
+  /* ===========================================================
+   ROTAS INTERNAS - INSTAGRAM DO USUÁRIO LOGADO
+=========================================================== */
+
+app.get("/me/instagram/profile", async (req, res) => {
+  try {
+    const accessToken = process.env.META_TEST_TOKEN;
+    const igUserId = process.env.META_TEST_IG_USER_ID;
+
+    if (!accessToken || !igUserId) {
+      return res.status(400).json({
+        error: "META_TEST_TOKEN ou META_TEST_IG_USER_ID não configurados",
+      });
+    }
+
+    const response = await fetch(
+      `https://graph.facebook.com/v23.0/${igUserId}?fields=id,username,profile_picture_url,followers_count,follows_count,media_count&access_token=${encodeURIComponent(accessToken)}`
+    );
+
+    const data = await response.json();
+
+    return res.status(response.ok ? 200 : 400).json(data);
+  } catch (error) {
+    console.error("Erro /me/instagram/profile:", error);
+
+    return res.status(500).json({
+      error: "Erro ao buscar perfil Instagram",
+    });
+  }
+});
+
+
+app.get("/me/instagram/media", async (req, res) => {
+  try {
+    const accessToken = process.env.META_TEST_TOKEN;
+    const igUserId = process.env.META_TEST_IG_USER_ID;
+
+    if (!accessToken || !igUserId) {
+      return res.status(400).json({
+        error: "META_TEST_TOKEN ou META_TEST_IG_USER_ID não configurados",
+      });
+    }
+
+    const response = await fetch(
+      `https://graph.facebook.com/v23.0/${igUserId}/media?fields=id,caption,media_type,media_url,timestamp&access_token=${encodeURIComponent(accessToken)}`
+    );
+
+    const data = await response.json();
+
+    return res.status(response.ok ? 200 : 400).json(data);
+  } catch (error) {
+    console.error("Erro /me/instagram/media:", error);
+
+    return res.status(500).json({
+      error: "Erro ao buscar posts do Instagram",
+    });
+  }
+});
+
 app.listen(PORT, HOST, () => {
   console.log(`Servidor rodando em ${BASE_URL}`);
 });
