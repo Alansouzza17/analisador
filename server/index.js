@@ -11,48 +11,36 @@ const BASE_URL =
   process.env.BASE_URL || "https://analisador-api.onrender.com";
 
 const app = express();
+
 app.use(cors());
-app.use(bodyParser.json({ limit: "50mb" }));
+app.use(bodyParser.json({ limit: "20mb" }));
 
 const ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY,
 });
 
-function evaluatePost(post) {
-  let nota = 100;
-  const flaws = [];
+/* ===========================================================
+   HELPERS
+=========================================================== */
 
-  if (post.media_type !== "VIDEO") {
-    nota -= 10;
-    flaws.push("Use mais vídeos");
+function extractJsonFromText(rawText) {
+  if (!rawText || !rawText.trim()) {
+    throw new Error("A IA retornou resposta vazia.");
   }
 
-  const len = (post.caption || "").length;
-  if (len < 30) {
-    nota -= 15;
-    flaws.push("Legenda muito curta");
-  }
-  if (len > 300) {
-    nota -= 10;
-    flaws.push("Legenda longa demais");
-  }
+  const cleaned = rawText
+    .replace(/```json/gi, "")
+    .replace(/```/g, "")
+    .trim();
 
-  const days = Math.floor(
-    (Date.now() - new Date(post.timestamp)) / (1000 * 60 * 60 * 24)
-  );
+  const start = cleaned.indexOf("{");
+  const end = cleaned.lastIndexOf("}");
 
-  if (days > 20) {
-    nota -= 20;
-    flaws.push("Post antigo");
+  if (start === -1 || end === -1 || end < start) {
+    throw new Error(`Resposta da IA sem JSON válido: ${cleaned}`);
   }
 
-  nota = Math.max(0, Math.min(100, nota));
-
-  return {
-    ...post,
-    nota,
-    dica: flaws.length ? flaws.join(", ") : "Post muito bom",
-  };
+  return JSON.parse(cleaned.slice(start, end + 1));
 }
 
 function postScore(post) {
@@ -97,6 +85,7 @@ function rankPosts(posts = []) {
 
 function buildMetrics(posts = []) {
   const now = new Date();
+
   const dates = posts
     .filter((p) => p.timestamp)
     .map((p) => new Date(p.timestamp))
@@ -149,74 +138,63 @@ function buildMetrics(posts = []) {
   };
 }
 
-function extractJsonFromText(rawText) {
-  if (!rawText || !rawText.trim()) {
-    throw new Error("A IA retornou resposta vazia.");
-  }
+function getAccessTokenFromReq(req) {
+  const queryToken = req.query.access_token?.trim();
+  const headerToken = req.headers.authorization?.replace(/^Bearer\s+/i, "").trim();
 
-  const cleaned = rawText
-    .replace(/```json/gi, "")
-    .replace(/```/g, "")
-    .trim();
-
-  const start = cleaned.indexOf("{");
-  const end = cleaned.lastIndexOf("}");
-
-  if (start === -1 || end === -1 || end < start) {
-    throw new Error(`Resposta da IA sem JSON válido: ${cleaned}`);
-  }
-
-  return JSON.parse(cleaned.slice(start, end + 1));
+  return headerToken || queryToken || null;
 }
 
-async function getInstagramProfile() {
-  const url = `https://graph.instagram.com/me?fields=id,username,account_type,media_count&access_token=${process.env.IG_TOKEN}`;
-  const response = await fetch(url);
+async function fetchJson(url, options = {}) {
+  const response = await fetch(url, options);
   const text = await response.text();
 
   if (!text.trim()) {
-    throw new Error("Instagram retornou resposta vazia no perfil");
+    throw new Error("Resposta vazia da API externa.");
   }
 
   let data;
   try {
     data = JSON.parse(text);
   } catch {
-    throw new Error(`Resposta inválida do Instagram no perfil: ${text}`);
+    throw new Error(`Resposta inválida da API externa: ${text}`);
   }
 
   if (!response.ok) {
-    throw new Error(
-      data?.error?.message || "Erro ao buscar perfil do Instagram"
-    );
+    throw new Error(data?.error?.message || "Erro na API externa");
   }
 
   return data;
 }
 
-async function getInstagramPosts() {
-  const url = `https://graph.instagram.com/me/media?fields=id,caption,media_type,media_url,timestamp&access_token=${process.env.IG_TOKEN}`;
-  const response = await fetch(url);
-  const text = await response.text();
+/* ===========================================================
+   INSTAGRAM FIXO (MODO ANTIGO / MVP)
+=========================================================== */
 
-  console.log("Resposta bruta Instagram /posts:", text);
-
-  if (!text.trim()) {
-    throw new Error("Instagram retornou resposta vazia");
+async function getInstagramProfileFixed() {
+  if (!process.env.IG_TOKEN) {
+    throw new Error("IG_TOKEN não configurado");
   }
 
-  let data;
-  try {
-    data = JSON.parse(text);
-  } catch {
-    throw new Error(`Resposta inválida do Instagram nos posts: ${text}`);
+  const url =
+    `https://graph.instagram.com/me` +
+    `?fields=id,username,account_type,media_count` +
+    `&access_token=${encodeURIComponent(process.env.IG_TOKEN)}`;
+
+  return fetchJson(url);
+}
+
+async function getInstagramPostsFixed() {
+  if (!process.env.IG_TOKEN) {
+    throw new Error("IG_TOKEN não configurado");
   }
 
-  if (!response.ok) {
-    throw new Error(
-      data?.error?.message || "Erro ao buscar posts no Instagram"
-    );
-  }
+  const url =
+    `https://graph.instagram.com/me/media` +
+    `?fields=id,caption,media_type,media_url,timestamp` +
+    `&access_token=${encodeURIComponent(process.env.IG_TOKEN)}`;
+
+  const data = await fetchJson(url);
 
   if (!data || !Array.isArray(data.data)) {
     throw new Error("Resposta inválida do Instagram: lista de posts ausente");
@@ -225,8 +203,12 @@ async function getInstagramPosts() {
   return data.data;
 }
 
+/* ===========================================================
+   HEALTH
+=========================================================== */
+
 app.get("/", (req, res) => {
-  res.json({
+  return res.json({
     ok: true,
     message: "Servidor rodando",
     port: PORT,
@@ -234,113 +216,102 @@ app.get("/", (req, res) => {
   });
 });
 
+/* ===========================================================
+   INSTAGRAM FIXO
+=========================================================== */
+
 app.get("/instagram/profile", async (req, res) => {
   try {
-    const data = await getInstagramProfile();
+    const data = await getInstagramProfileFixed();
     return res.json(data);
-  } catch (e) {
-    console.error("Erro /instagram/profile:", e);
+  } catch (error) {
+    console.error("Erro /instagram/profile:", error);
     return res.status(500).json({
       error: "Erro ao buscar perfil do Instagram",
-      detalhes: e.message,
+      detalhes: error.message,
     });
   }
 });
 
 app.get("/instagram/posts", async (req, res) => {
   try {
-    const posts = await getInstagramPosts();
+    const posts = await getInstagramPostsFixed();
     return res.json(posts);
-  } catch (e) {
-    console.error("Erro /instagram/posts:", e);
+  } catch (error) {
+    console.error("Erro /instagram/posts:", error);
     return res.status(500).json({
-      error: "Erro ao buscar posts",
-      detalhes: e.message,
+      error: "Erro ao buscar posts do Instagram",
+      detalhes: error.message,
     });
   }
 });
 
+/* ===========================================================
+   IA - ANÁLISE DO PERFIL
+=========================================================== */
+
 app.get("/ia/analyze", async (req, res) => {
   try {
-    const posts = await getInstagramPosts();
+    const posts = await getInstagramPostsFixed();
+    const rankedPosts = rankPosts(posts);
     const metrics = buildMetrics(posts);
-    const ranking = rankPosts(posts);
-    const analiseIndividual = posts.map(evaluatePost);
-
-    if (posts.length === 0) {
-      return res.json({
-        resumo: "Não há posts suficientes para análise.",
-        pontosFortes: "Nenhum conteúdo encontrado.",
-        pontosFracos: "Sem dados para avaliação.",
-        sugestoes: "Publique conteúdos para que a IA possa analisar.",
-        metricas: metrics,
-      });
-    }
 
     const prompt = `
-Você é um especialista em marketing digital e Instagram Growth.
+Você é um especialista em crescimento no Instagram.
 
-Baseado nos POSTS abaixo, faça uma auditoria completa.
-
-POSTS:
-${posts
-  .map((p) => `- ${p.caption || "Sem legenda"} (${p.timestamp || "Sem data"})`)
-  .join("\n")}
-
-MÉTRICAS:
-${JSON.stringify(metrics, null, 2)}
-
-TAREFA:
-Retorne SOMENTE em JSON válido no formato:
+Analise os posts abaixo e retorne SOMENTE JSON válido com esta estrutura:
 
 {
-  "nicho": "qual o nicho do perfil",
-  "score": 0,
-  "bioSugerida": "bio profissional pronta",
-  "resumo": "diagnóstico geral",
-  "pontosFortes": "pontos positivos",
-  "pontosFracos": "falhas do perfil",
-  "sugestoes": "ações práticas"
+  "resumo": "resumo geral",
+  "pontosFortes": ["ponto 1", "ponto 2"],
+  "pontosFracos": ["ponto 1", "ponto 2"],
+  "sugestoes": ["sugestão 1", "sugestão 2"],
+  "bioSugerida": "bio sugerida",
+  "score": 0
 }
 
-REGRAS:
-- Não escreva nada fora do JSON
-- "score" deve ser entre 0 e 100
-- A bio deve ser curta, clara e profissional
-- O JSON deve ser válido
+Métricas calculadas:
+${JSON.stringify(metrics, null, 2)}
+
+Posts:
+${JSON.stringify(rankedPosts.slice(0, 12), null, 2)}
+
+Regras:
+- Responda apenas JSON válido
+- Não escreva markdown
+- O campo "score" deve ser um número entre 0 e 100
 `;
 
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
-      contents: prompt,
+      contents: [{ parts: [{ text: prompt }] }],
     });
 
-    const rawText = response.text || response.outputText || "";
+    const raw = response.text || response.outputText || "";
 
-    if (!rawText || !rawText.trim()) {
+    if (!raw || !raw.trim()) {
       throw new Error("Gemini retornou resposta vazia.");
     }
 
-    console.log("Resposta bruta Gemini /ia/analyze:", rawText);
+    const json = extractJsonFromText(raw);
 
-    const json = extractJsonFromText(rawText);
-
-    json.metricas = metrics;
-    json.ranking = ranking;
-    json.posts = analiseIndividual;
-
-    return res.json(json);
+    return res.json({
+      ...json,
+      metricas: metrics,
+    });
   } catch (error) {
-    console.error("ERRO IA:", error);
+    console.error("Erro /ia/analyze:", error);
     return res.status(500).json({
-      resumo: "Erro ao analisar.",
-      pontosFortes: "-",
-      pontosFracos: "-",
-      sugestoes: error.message || "Verifique backend e token.",
+      error: "Falha na análise da IA",
+      detalhes: error.message,
       metricas: buildMetrics([]),
     });
   }
 });
+
+/* ===========================================================
+   IA - ANÁLISE DE FOTO
+=========================================================== */
 
 app.post("/ia/photo", async (req, res) => {
   try {
@@ -397,8 +368,6 @@ Regras:
       throw new Error("Gemini retornou resposta vazia na análise da foto.");
     }
 
-    console.log("Resposta bruta Gemini /ia/photo:", raw);
-
     const json = extractJsonFromText(raw);
     return res.json(json);
   } catch (error) {
@@ -411,113 +380,190 @@ Regras:
 });
 
 /* ===========================================================
-   META / INSTAGRAM LOGIN - OAUTH FLOW
+   META / FACEBOOK LOGIN
 =========================================================== */
 
 app.get("/auth/meta", (req, res) => {
-  const redirectUri = encodeURIComponent(
-    `${BASE_URL}/auth/meta/callback`
-  );
+  const redirectUri = encodeURIComponent(`${BASE_URL}/auth/meta/callback`);
 
   const url =
     `https://www.facebook.com/v23.0/dialog/oauth` +
     `?client_id=${process.env.META_APP_ID}` +
     `&redirect_uri=${redirectUri}` +
-    `&scope=pages_show_list,instagram_basic,business_management` +
+    `&scope=public_profile,pages_show_list,instagram_basic,business_management` +
     `&response_type=code`;
 
   return res.redirect(url);
 });
 
+app.get("/auth/meta/callback", async (req, res) => {
+  try {
+    const { code } = req.query;
+
+    if (!code) {
+      return res.status(400).send("Código não recebido");
+    }
+
+    const redirectUri = `${BASE_URL}/auth/meta/callback`;
+
+    const tokenUrl =
+      `https://graph.facebook.com/v23.0/oauth/access_token` +
+      `?client_id=${process.env.META_APP_ID}` +
+      `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+      `&client_secret=${process.env.META_APP_SECRET}` +
+      `&code=${code}`;
+
+    const tokenData = await fetchJson(tokenUrl);
+
+    return res.send(`
+      <html>
+        <body style="font-family: Arial; text-align: center; padding: 40px;">
+          <h2>Login realizado com sucesso</h2>
+          <p>Você já pode voltar para o app.</p>
+          <p style="color:#666;font-size:14px;">
+            Token gerado com sucesso no backend.
+          </p>
+          <pre style="text-align:left; display:inline-block; max-width:800px; white-space:pre-wrap;">
+${JSON.stringify(
+  {
+    token_type: tokenData.token_type,
+    expires_in: tokenData.expires_in,
+    access_token_preview: tokenData.access_token
+      ? `${tokenData.access_token.slice(0, 12)}...${tokenData.access_token.slice(-6)}`
+      : null,
+  },
+  null,
+  2
+)}
+          </pre>
+        </body>
+      </html>
+    `);
+  } catch (error) {
+    console.error("Erro callback Meta:", error);
+    return res.status(500).json({
+      error: "Erro no callback do Meta",
+      detalhes: error.message,
+    });
+  }
+});
+
 app.get("/auth/meta/test-user", async (req, res) => {
   try {
-    const accessToken = req.query.access_token?.trim();
+    const accessToken = getAccessTokenFromReq(req);
 
     if (!accessToken) {
       return res.status(400).json({ error: "access_token é obrigatório" });
     }
 
-    console.log("TOKEN RECEBIDO:", accessToken);
-
-    const response = await fetch(
+    const data = await fetchJson(
       `https://graph.facebook.com/v23.0/me?fields=id,name&access_token=${encodeURIComponent(accessToken)}`
     );
 
-    const data = await response.json();
-    return res.status(response.ok ? 200 : 400).json(data);
+    return res.json(data);
   } catch (error) {
-    console.error("Erro ao buscar usuário:", error);
-    return res.status(500).json({ error: "Erro interno ao buscar usuário" });
+    console.error("Erro ao buscar usuário Meta:", error);
+    return res.status(500).json({
+      error: "Erro ao buscar usuário Meta",
+      detalhes: error.message,
+    });
   }
 });
 
 app.get("/auth/meta/pages", async (req, res) => {
   try {
-    const accessToken = req.query.access_token?.trim();
+    const accessToken = getAccessTokenFromReq(req);
 
     if (!accessToken) {
       return res.status(400).json({ error: "access_token é obrigatório" });
     }
 
-    const response = await fetch(
+    const data = await fetchJson(
       `https://graph.facebook.com/v23.0/me/accounts?access_token=${encodeURIComponent(accessToken)}`
     );
 
-    const data = await response.json();
-    return res.status(response.ok ? 200 : 400).json(data);
+    return res.json(data);
   } catch (error) {
     console.error("Erro ao buscar páginas:", error);
-    return res.status(500).json({ error: "Erro interno ao buscar páginas" });
+    return res.status(500).json({
+      error: "Erro ao buscar páginas",
+      detalhes: error.message,
+    });
   }
 });
 
 app.get("/auth/meta/instagram-account", async (req, res) => {
   try {
     const pageId = req.query.page_id;
-    const accessToken = req.query.access_token?.trim();
+    const accessToken = getAccessTokenFromReq(req);
 
     if (!pageId || !accessToken) {
-      return res
-        .status(400)
-        .json({ error: "page_id e access_token são obrigatórios" });
+      return res.status(400).json({
+        error: "page_id e access_token são obrigatórios",
+      });
     }
 
-    const response = await fetch(
+    const data = await fetchJson(
       `https://graph.facebook.com/v23.0/${pageId}?fields=instagram_business_account&access_token=${encodeURIComponent(accessToken)}`
     );
 
-    const data = await response.json();
-    return res.status(response.ok ? 200 : 400).json(data);
+    return res.json(data);
   } catch (error) {
     console.error("Erro ao buscar conta do Instagram:", error);
-    return res
-      .status(500)
-      .json({ error: "Erro interno ao buscar conta do Instagram" });
+    return res.status(500).json({
+      error: "Erro ao buscar conta do Instagram",
+      detalhes: error.message,
+    });
   }
 });
 
 app.get("/auth/meta/instagram-profile", async (req, res) => {
   try {
     const igUserId = req.query.ig_user_id;
-    const accessToken = req.query.access_token?.trim();
+    const accessToken = getAccessTokenFromReq(req);
 
     if (!igUserId || !accessToken) {
-      return res
-        .status(400)
-        .json({ error: "ig_user_id e access_token são obrigatórios" });
+      return res.status(400).json({
+        error: "ig_user_id e access_token são obrigatórios",
+      });
     }
 
-    const response = await fetch(
+    const data = await fetchJson(
       `https://graph.facebook.com/v23.0/${igUserId}?fields=id,username,profile_picture_url,followers_count,follows_count,media_count&access_token=${encodeURIComponent(accessToken)}`
     );
 
-    const data = await response.json();
-    return res.status(response.ok ? 200 : 400).json(data);
+    return res.json(data);
   } catch (error) {
     console.error("Erro ao buscar perfil do Instagram:", error);
-    return res
-      .status(500)
-      .json({ error: "Erro interno ao buscar perfil do Instagram" });
+    return res.status(500).json({
+      error: "Erro ao buscar perfil do Instagram",
+      detalhes: error.message,
+    });
+  }
+});
+
+app.get("/auth/meta/instagram-media", async (req, res) => {
+  try {
+    const igUserId = req.query.ig_user_id;
+    const accessToken = getAccessTokenFromReq(req);
+
+    if (!igUserId || !accessToken) {
+      return res.status(400).json({
+        error: "ig_user_id e access_token são obrigatórios",
+      });
+    }
+
+    const data = await fetchJson(
+      `https://graph.facebook.com/v23.0/${igUserId}/media?fields=id,caption,media_type,media_url,timestamp&access_token=${encodeURIComponent(accessToken)}`
+    );
+
+    return res.json(data);
+  } catch (error) {
+    console.error("Erro ao buscar mídia do Instagram:", error);
+    return res.status(500).json({
+      error: "Erro ao buscar mídia do Instagram",
+      detalhes: error.message,
+    });
   }
 });
 
