@@ -414,82 +414,93 @@ Regras:
    META / INSTAGRAM LOGIN - OAUTH FLOW
 =========================================================== */
 
-app.get("/auth/meta", (req, res) => {
-  const redirectUri = encodeURIComponent(
-    `${BASE_URL}/auth/meta/callback`
-  );
+app.get("/auth/meta/test-user", async (req, res) => {
+  try {
+    const accessToken = req.query.access_token;
 
-  const url =
-    `https://www.facebook.com/v23.0/dialog/oauth` +
-    `?client_id=${process.env.META_APP_ID}` +
-    `&redirect_uri=${redirectUri}` +
-    `&scope=pages_show_list,instagram_basic,business_management` +
-    `&response_type=code`;
+    if (!accessToken) {
+      return res.status(400).json({ error: "access_token é obrigatório" });
+    }
 
-  return res.redirect(url);
+    const response = await fetch(
+      `https://graph.facebook.com/v23.0/me?fields=id,name&access_token=${accessToken}`
+    );
+
+    const data = await response.json();
+    return res.status(response.ok ? 200 : 400).json(data);
+  } catch (error) {
+    console.error("Erro ao buscar usuário:", error);
+    return res.status(500).json({ error: "Erro interno ao buscar usuário" });
+  }
 });
 
-app.get("/auth/meta/callback", async (req, res) => {
+app.get("/auth/meta/pages", async (req, res) => {
   try {
-    const { code } = req.query;
+    const accessToken = req.query.access_token;
 
-    if (!code) {
-      return res.status(400).send("Código não recebido");
+    if (!accessToken) {
+      return res.status(400).json({ error: "access_token é obrigatório" });
     }
 
-    const redirectUri = `${BASE_URL}/auth/meta/callback`;
+    const response = await fetch(
+      `https://graph.facebook.com/v23.0/me/accounts?access_token=${accessToken}`
+    );
 
-    const tokenUrl =
-      `https://graph.facebook.com/v23.0/oauth/access_token` +
-      `?client_id=${process.env.META_APP_ID}` +
-      `&redirect_uri=${encodeURIComponent(redirectUri)}` +
-      `&client_secret=${process.env.META_APP_SECRET}` +
-      `&code=${code}`;
-
-    const tokenResponse = await fetch(tokenUrl);
-    const tokenText = await tokenResponse.text();
-
-    if (!tokenText.trim()) {
-      return res.status(500).send("Resposta vazia ao trocar código por token");
-    }
-
-    let tokenData;
-    try {
-      tokenData = JSON.parse(tokenText);
-    } catch {
-      return res
-        .status(500)
-        .send(`Resposta inválida ao trocar código por token: ${tokenText}`);
-    }
-
-    if (!tokenResponse.ok || !tokenData.access_token) {
-      console.error("Erro token Meta:", tokenData);
-      return res.status(500).send(`
-        <html>
-          <body style="font-family: Arial; text-align: center; padding: 40px;">
-            <h2>Erro ao autenticar</h2>
-            <pre style="text-align:left; display:inline-block; max-width:800px; white-space:pre-wrap;">
-${JSON.stringify(tokenData, null, 2)}
-            </pre>
-          </body>
-        </html>
-      `);
-    }
-
-    return res.send(`
-      <html>
-        <body style="font-family: Arial; text-align: center; padding: 40px;">
-          <h2>Login realizado com sucesso</h2>
-          <p>Token recebido com sucesso.</p>
-          <pre style="text-align:left; display:inline-block; max-width:800px; white-space:pre-wrap;">
-${JSON.stringify(tokenData, null, 2)}
-          </pre>
-        </body>
-      </html>
-    `);
+    const data = await response.json();
+    return res.status(response.ok ? 200 : 400).json(data);
   } catch (error) {
-    console.error("Erro callback Meta:", error);
-    return res.status(500).send("Erro no callback do Meta");
+    console.error("Erro ao buscar páginas:", error);
+    return res.status(500).json({ error: "Erro interno ao buscar páginas" });
+  }
+});
+
+app.get("/auth/meta/instagram-account", async (req, res) => {
+  try {
+    const pageId = req.query.page_id;
+    const accessToken = req.query.access_token;
+
+    if (!pageId || !accessToken) {
+      return res
+        .status(400)
+        .json({ error: "page_id e access_token são obrigatórios" });
+    }
+
+    const response = await fetch(
+      `https://graph.facebook.com/v23.0/${pageId}?fields=instagram_business_account&access_token=${accessToken}`
+    );
+
+    const data = await response.json();
+    return res.status(response.ok ? 200 : 400).json(data);
+  } catch (error) {
+    console.error("Erro ao buscar conta do Instagram:", error);
+    return res
+      .status(500)
+      .json({ error: "Erro interno ao buscar conta do Instagram" });
+  }
+});
+
+app.get("/auth/meta/instagram-profile", async (req, res) => {
+  try {
+    const igUserId = req.query.ig_user_id;
+    const accessToken = req.query.access_token;
+
+    if (!igUserId || !accessToken) {
+      return res
+        .status(400)
+        .json({ error: "ig_user_id e access_token são obrigatórios" });
+    }
+
+    const response = await fetch(
+      `https://graph.facebook.com/v23.0/${igUserId}?fields=id,username,profile_picture_url,followers_count,follows_count,media_count&access_token=${accessToken}`
+    );
+
+    const data = await response.json();
+    return res.status(response.ok ? 200 : 400).json(data);
+  } catch (error) {
+    console.error("Erro ao buscar perfil do Instagram:", error);
+    return res
+      .status(500)
+      .json({ error: "Erro interno ao buscar perfil do Instagram" });
   }
 });
 
