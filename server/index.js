@@ -429,67 +429,25 @@ app.get("/auth/meta", (req, res) => {
   return res.redirect(url);
 });
 
-app.get("/auth/meta/callback", async (req, res) => {
+app.get("/auth/meta/test-user", async (req, res) => {
   try {
-    const { code } = req.query;
+    const accessToken = req.query.access_token?.trim();
 
-    if (!code) {
-      return res.status(400).send("Código não recebido");
+    if (!accessToken) {
+      return res.status(400).json({ error: "access_token é obrigatório" });
     }
 
-    const redirectUri = `${BASE_URL}/auth/meta/callback`;
+    console.log("TOKEN RECEBIDO:", accessToken);
 
-    const tokenUrl =
-      `https://graph.facebook.com/v23.0/oauth/access_token` +
-      `?client_id=${process.env.META_APP_ID}` +
-      `&redirect_uri=${encodeURIComponent(redirectUri)}` +
-      `&client_secret=${process.env.META_APP_SECRET}` +
-      `&code=${code}`;
+    const response = await fetch(
+      `https://graph.facebook.com/v23.0/me?fields=id,name&access_token=${encodeURIComponent(accessToken)}`
+    );
 
-    const tokenResponse = await fetch(tokenUrl);
-    const tokenText = await tokenResponse.text();
-
-    if (!tokenText.trim()) {
-      return res.status(500).send("Resposta vazia ao trocar código por token");
-    }
-
-    let tokenData;
-    try {
-      tokenData = JSON.parse(tokenText);
-    } catch {
-      return res
-        .status(500)
-        .send(`Resposta inválida ao trocar código por token: ${tokenText}`);
-    }
-
-    if (!tokenResponse.ok || !tokenData.access_token) {
-      console.error("Erro token Meta:", tokenData);
-      return res.status(500).send(`
-        <html>
-          <body style="font-family: Arial; text-align: center; padding: 40px;">
-            <h2>Erro ao autenticar</h2>
-            <pre style="text-align:left; display:inline-block; max-width:800px; white-space:pre-wrap;">
-${JSON.stringify(tokenData, null, 2)}
-            </pre>
-          </body>
-        </html>
-      `);
-    }
-
-    return res.send(`
-      <html>
-        <body style="font-family: Arial; text-align: center; padding: 40px;">
-          <h2>Login realizado com sucesso</h2>
-          <p>Token recebido com sucesso.</p>
-          <pre style="text-align:left; display:inline-block; max-width:800px; white-space:pre-wrap;">
-${JSON.stringify(tokenData, null, 2)}
-          </pre>
-        </body>
-      </html>
-    `);
+    const data = await response.json();
+    return res.status(response.ok ? 200 : 400).json(data);
   } catch (error) {
-    console.error("Erro callback Meta:", error);
-    return res.status(500).send("Erro no callback do Meta");
+    console.error("Erro ao buscar usuário:", error);
+    return res.status(500).json({ error: "Erro interno ao buscar usuário" });
   }
 });
 
