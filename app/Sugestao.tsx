@@ -1,259 +1,574 @@
-import TopBar from "@/components/TopBar";
 import { API_URL } from "@/services/api";
+import { Ionicons } from "@expo/vector-icons";
+import * as Clipboard from "expo-clipboard";
 import * as ImagePicker from "expo-image-picker";
 import { LinearGradient } from "expo-linear-gradient";
-import { useState } from "react";
+import { useRouter } from "expo-router";
+import React, { useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Image,
   ScrollView,
+  StatusBar,
   StyleSheet,
   Text,
   TouchableOpacity,
-  View
+  View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 type AIResult = {
   avaliacao: string;
   publico: string;
-  estilo: string;
-  melhorias: string;
+  melhorUso: string;
   legenda: string;
   hashtags: string;
 };
 
-
 export default function Sugestao() {
+  const router = useRouter();
+
   const [image, setImage] = useState<string | null>(null);
-  const [base64, setBase64] = useState<string | null>(null);
-  const [result, setResult] = useState<AIResult | null>(null);
   const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<AIResult | null>(null);
 
   async function pickImage() {
-    const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      quality: 0.7,
-      base64: true,
-    });
+    try {
+      const permission =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
 
-    if (!res.canceled) {
-      setImage(res.assets[0].uri);
-      setBase64(res.assets[0].base64 || null);
-      setResult(null);
+      if (!permission.granted) {
+        Alert.alert("Permissão necessária", "Permita acesso às fotos");
+        return;
+      }
+
+      const pickerResult = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        allowsEditing: true,
+        quality: 1,
+        base64: true,
+      });
+
+      if (!pickerResult.canceled && pickerResult.assets.length > 0) {
+        const asset = pickerResult.assets[0];
+        setImage(asset.uri);
+
+        const base64 = asset.base64 ?? undefined;
+        analyzeImage(base64);
+      }
+    } catch (error) {
+      console.log("Erro ao selecionar imagem:", error);
+      Alert.alert("Erro", "Erro ao selecionar imagem");
     }
   }
 
-  async function analyzeImageWithAI() {
-    if (!base64) return;
-
+  async function takePhoto() {
     try {
-      setLoading(true);
+      const permission = await ImagePicker.requestCameraPermissionsAsync();
 
-      const response = await fetch(`${API_URL}/ia/photo`
-, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-         image: base64
-        })
+      if (!permission.granted) {
+        Alert.alert("Permissão necessária", "Permita acesso à câmera");
+        return;
+      }
 
+      const cameraResult = await ImagePicker.launchCameraAsync({
+        allowsEditing: true,
+        quality: 1,
+        base64: true,
       });
 
-      const data = await response.json();
+      if (!cameraResult.canceled && cameraResult.assets.length > 0) {
+        const asset = cameraResult.assets[0];
+        setImage(asset.uri);
 
-      setResult(data);
-
+        const base64 = asset.base64 ?? undefined;
+        analyzeImage(base64);
+      }
     } catch (error) {
-      console.error(error);
+      console.log("Erro ao tirar foto:", error);
+      Alert.alert("Erro", "Erro ao abrir câmera");
+    }
+  }
+
+  async function analyzeImage(base64: string | undefined) {
+    try {
+      if (!base64) {
+        Alert.alert("Erro", "Imagem inválida");
+        return;
+      }
+
+      setLoading(true);
+      setResult(null);
+
+      const response = await fetch(`${API_URL}/ia/photo`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          image: `data:image/jpeg;base64,${base64}`,
+        }),
+      });
+
+      const text = await response.text();
+
+      if (!response.ok) {
+        throw new Error(text);
+      }
+
+      const data: AIResult = JSON.parse(text);
+      setResult(data);
+    } catch (error) {
+      console.log("Erro IA:", error);
+      Alert.alert("Erro", "Erro ao analisar imagem");
     } finally {
       setLoading(false);
     }
   }
 
+  async function copyText(value: string, label: string) {
+    try {
+      await Clipboard.setStringAsync(value);
+      Alert.alert("Copiado", `${label} copiado com sucesso`);
+    } catch (error) {
+      Alert.alert("Erro", `Não foi possível copiar ${label.toLowerCase()}`);
+    }
+  }
+
+  function renderTagList(tags: string) {
+    const items = tags
+      .split(/[\s,]+/)
+      .map((tag) => tag.trim())
+      .filter((tag) => tag.startsWith("#"));
+
+    return (
+      <View style={styles.tagsWrap}>
+        {items.map((tag, index) => (
+          <View key={`${tag}-${index}`} style={styles.tagChip}>
+            <Text style={styles.tagChipText}>{tag}</Text>
+          </View>
+        ))}
+      </View>
+    );
+  }
+
   return (
-    <LinearGradient
-      colors={["#FEDA75", "#FA7E1E", "#D62976", "#962FBF", "#4F5BD5"]}
-      style={styles.gradient}
-    >
-      <TopBar title="Sugestão de Post" />
+    <View style={styles.screen}>
+      <StatusBar barStyle="dark-content" />
 
-      <ScrollView contentContainerStyle={styles.container}>
-        <Text style={styles.title}>Sugestão Inteligente</Text>
+      <LinearGradient
+        colors={["#feda75", "#fa7e1e", "#d62976", "#962fbf", "#4f5bd5"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={styles.header}
+      >
+        <SafeAreaView edges={["top"]}>
+          <View style={styles.headerContent}>
+            <View style={styles.headerLeft}>
+              <TouchableOpacity
+                style={styles.backButton}
+                onPress={() => router.back()}
+              >
+                <Ionicons name="chevron-back" size={28} color="#fff" />
+              </TouchableOpacity>
 
-        <TouchableOpacity style={styles.uploadBtn} onPress={pickImage}>
-          <Text style={styles.uploadText}>
-            {image ? "Trocar imagem" : "Selecionar imagem"}
-          </Text>
-        </TouchableOpacity>
+              <View>
+                <Text style={styles.headerTitle}>Sugestão de Post</Text>
+                <Text style={styles.headerSubtitle}>
+                  Analise sua imagem com IA
+                </Text>
+              </View>
+            </View>
 
-        {image && (
-          <View style={styles.imageCard}>
-            <Image source={{ uri: image }} style={styles.preview} />
+            <View style={styles.sparkleButton}>
+              <Text style={styles.sparkleIcon}>✨</Text>
+            </View>
           </View>
-        )}
+        </SafeAreaView>
+      </LinearGradient>
 
-        {image && !loading && (
-          <TouchableOpacity style={styles.analyzeBtn} onPress={analyzeImageWithAI}>
-            <Text style={styles.analyzeText}>Analisar com IA</Text>
-          </TouchableOpacity>
-        )}
+      <SafeAreaView style={styles.safe}>
+        <ScrollView
+          contentContainerStyle={styles.container}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.actionsRow}>
+            <TouchableOpacity style={styles.actionCard} onPress={takePhoto}>
+              <View style={[styles.actionIconBox, { backgroundColor: "#EAF5EA" }]}>
+                <Text style={styles.actionEmoji}>📷</Text>
+              </View>
+              <Text style={styles.actionTitle}>Tirar Foto</Text>
+              <Text style={styles.actionSubtitle}>Capture agora</Text>
+            </TouchableOpacity>
 
-        {loading && (
-          <View style={styles.loadingBox}>
-            <ActivityIndicator size="large" />
-            <Text style={styles.loadingText}>Analisando imagem...</Text>
+            <TouchableOpacity style={styles.actionCard} onPress={pickImage}>
+              <View style={[styles.actionIconBox, { backgroundColor: "#F3E8FA" }]}>
+                <Text style={styles.actionEmoji}>🖼️</Text>
+              </View>
+              <Text style={styles.actionTitle}>Galeria</Text>
+              <Text style={styles.actionSubtitle}>Escolha uma imagem</Text>
+            </TouchableOpacity>
           </View>
-        )}
 
-        {result && !loading && (
-  <>
-    <View style={styles.card}>
-      <Text style={styles.cardTitle}>📸 Avaliação da Foto</Text>
-      <Text style={styles.text}>{result.avaliacao}</Text>
+          <View style={styles.previewCard}>
+            <View style={styles.previewHeader}>
+              <Text style={styles.previewTitle}>Preview da Imagem</Text>
+            </View>
+
+            {image ? (
+              <Image source={{ uri: image }} style={styles.imagePreview} />
+            ) : (
+              <View style={styles.emptyPreview}>
+                <Text style={styles.emptyPreviewIcon}>🖼️</Text>
+                <Text style={styles.emptyPreviewText}>
+                  Selecione uma imagem para analisar
+                </Text>
+              </View>
+            )}
+          </View>
+
+          {loading && (
+            <View style={styles.loadingCard}>
+              <ActivityIndicator size="large" color="#d62976" />
+              <Text style={styles.loadingTitle}>Analisando com IA...</Text>
+              <Text style={styles.loadingText}>
+                Estamos avaliando sua imagem e gerando sugestões
+              </Text>
+            </View>
+          )}
+
+          {result && !loading && (
+            <>
+              <View style={styles.resultCard}>
+                <Text style={styles.resultTitle}>⭐ Avaliação da Foto</Text>
+                <Text style={styles.resultText}>{result.avaliacao}</Text>
+              </View>
+
+              <View style={styles.resultCard}>
+                <Text style={styles.resultTitle}>🎯 Público Ideal</Text>
+                <Text style={styles.resultText}>{result.publico}</Text>
+              </View>
+
+              <View style={styles.resultCard}>
+                <Text style={styles.resultTitle}>🚀 Melhor Uso</Text>
+                <Text style={styles.resultText}>{result.melhorUso}</Text>
+              </View>
+
+              <View style={styles.resultCard}>
+                <View style={styles.cardHeaderRow}>
+                  <Text style={styles.resultTitle}>✍️ Legenda Sugerida</Text>
+                  <TouchableOpacity
+                    onPress={() => copyText(result.legenda, "Legenda")}
+                  >
+                    <Text style={styles.copyText}>Copiar</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <Text style={styles.resultText}>{result.legenda}</Text>
+              </View>
+
+              <View style={styles.resultCard}>
+                <View style={styles.cardHeaderRow}>
+                  <Text style={styles.resultTitle}>#️⃣ Hashtags</Text>
+                  <TouchableOpacity
+                    onPress={() => copyText(result.hashtags, "Hashtags")}
+                  >
+                    <Text style={styles.copyText}>Copiar</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {renderTagList(result.hashtags)}
+              </View>
+
+              <TouchableOpacity style={styles.publishButton}>
+                <LinearGradient
+                  colors={["#d62976", "#962fbf", "#4f5bd5"]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.publishGradient}
+                >
+                  <Text style={styles.publishButtonText}>Publicar Agora</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            </>
+          )}
+        </ScrollView>
+      </SafeAreaView>
     </View>
-
-    <View style={styles.card}>
-      <Text style={styles.cardTitle}>🎯 Público-alvo</Text>
-      <Text style={styles.text}>{result.publico}</Text>
-    </View>
-
-    <View style={styles.card}>
-      <Text style={styles.cardTitle}>🎨 Estilo Visual</Text>
-      <Text style={styles.text}>{result.estilo}</Text>
-    </View>
-
-    <View style={styles.card}>
-      <Text style={styles.cardTitle}>⚠️ Melhorias</Text>
-      <Text style={styles.text}>{result.melhorias}</Text>
-    </View>
-
-    <View style={styles.card}>
-      <Text style={styles.cardTitle}>📝 Legenda</Text>
-      <Text style={styles.text}>{result.legenda}</Text>
-    </View>
-
-    <View style={styles.card}>
-  <Text style={styles.cardTitle}>🏷️ Hashtags</Text>
-  <View style={styles.tagBox}>
-    {(result?.hashtags ?? "")
-      .toString()
-      .split(/\s+/)
-      .filter(Boolean)
-      .map((tag, index) => (
-        <Text key={index} style={styles.tag}>
-          {tag}
-        </Text>
-      ))}
-  </View>
-</View>
-
-  </>
-)}
-
-      </ScrollView>
-    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
-  gradient: { flex: 1 },
-  container: { padding: 20, paddingTop: 70 },
-
-  title: {
-    fontSize: 26,
-    fontWeight: "800",
-    color: "#fff",
-    textAlign: "center",
-    marginBottom: 20,
+  screen: {
+    flex: 1,
+    backgroundColor: "#F4F4F6",
   },
 
-  uploadBtn: {
-    backgroundColor: "#fff",
-    paddingVertical: 14,
-    borderRadius: 14,
+  header: {
+    paddingBottom: 22,
+  },
+
+  headerContent: {
+    paddingTop: 10,
+    paddingHorizontal: 20,
+    flexDirection: "row",
     alignItems: "center",
-    marginBottom: 10,
+    justifyContent: "space-between",
   },
 
-  uploadText: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#333",
+  headerLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+    marginRight: 12,
   },
 
-  imageCard: {
-    backgroundColor: "rgba(255,255,255,0.12)",
+  backButton: {
+    width: 60,
+    height: 60,
     borderRadius: 18,
-    padding: 10,
-    marginTop: 15,
-  },
-
-  preview: {
-    width: "100%",
-    height: 240,
-    borderRadius: 14,
-  },
-
-  analyzeBtn: {
-    backgroundColor: "#fff",
-    marginTop: 12,
-    paddingVertical: 12,
-    borderRadius: 14,
+    backgroundColor: "rgba(255,255,255,0.22)",
     alignItems: "center",
+    justifyContent: "center",
+    marginRight: 14,
   },
 
-  analyzeText: {
-    fontWeight: "700",
-    fontSize: 16,
-    color: "#333",
+  headerTitle: {
+    fontSize: 22,
+    fontWeight: "800",
+    color: "#151515",
+    marginBottom: 2,
   },
 
-  loadingBox: {
-    marginTop: 20,
-    alignItems: "center",
-  },
-
-  loadingText: {
-    color: "#fff",
-    marginTop: 8,
+  headerSubtitle: {
+    fontSize: 13,
+    color: "#1F1F1F",
     opacity: 0.85,
   },
 
-  card: {
-    backgroundColor: "rgba(255,255,255,0.15)",
-    padding: 16,
-    borderRadius: 16,
-    marginTop: 14,
+  sparkleButton: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    borderWidth: 3,
+    borderColor: "#fff",
+    backgroundColor: "rgba(255,255,255,0.25)",
+    alignItems: "center",
+    justifyContent: "center",
   },
 
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#fff",
+  sparkleIcon: {
+    fontSize: 28,
+  },
+
+  safe: {
+    flex: 1,
+  },
+
+  container: {
+    padding: 20,
+    paddingBottom: 34,
+  },
+
+  actionsRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 18,
+  },
+
+  actionCard: {
+    width: "48%",
+    backgroundColor: "#fff",
+    borderRadius: 26,
+    padding: 22,
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
+    alignItems: "flex-start",
+  },
+
+  actionIconBox: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 18,
+  },
+
+  actionEmoji: {
+    fontSize: 26,
+  },
+
+  actionTitle: {
+    fontSize: 19,
+    fontWeight: "800",
+    color: "#1E1E1E",
     marginBottom: 6,
   },
 
-  text: {
-    color: "#fff",
-    fontSize: 15,
-    opacity: 0.9,
+  actionSubtitle: {
+    fontSize: 13,
+    color: "#707070",
+    lineHeight: 18,
   },
 
-  tagBox: {
+  previewCard: {
+    backgroundColor: "#fff",
+    borderRadius: 28,
+    padding: 20,
+    marginBottom: 18,
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
+  },
+
+  previewHeader: {
+    marginBottom: 16,
+  },
+
+  previewTitle: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: "#1D1D1D",
+  },
+
+  imagePreview: {
+    width: "100%",
+    height: 330,
+    borderRadius: 24,
+    resizeMode: "cover",
+  },
+
+  emptyPreview: {
+    height: 260,
+    borderRadius: 24,
+    backgroundColor: "#FAFAFA",
+    borderWidth: 1,
+    borderColor: "#ECECEC",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 20,
+  },
+
+  emptyPreviewIcon: {
+    fontSize: 36,
+    marginBottom: 10,
+  },
+
+  emptyPreviewText: {
+    fontSize: 15,
+    color: "#777",
+    textAlign: "center",
+  },
+
+  loadingCard: {
+    backgroundColor: "#fff",
+    borderRadius: 28,
+    paddingVertical: 30,
+    paddingHorizontal: 22,
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
+  },
+
+  loadingTitle: {
+    marginTop: 14,
+    fontSize: 18,
+    fontWeight: "800",
+    color: "#1E1E1E",
+  },
+
+  loadingText: {
+    marginTop: 8,
+    fontSize: 14,
+    color: "#777",
+    textAlign: "center",
+    lineHeight: 22,
+  },
+
+  resultCard: {
+    backgroundColor: "#fff",
+    borderRadius: 26,
+    padding: 20,
+    marginBottom: 16,
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
+  },
+
+  resultTitle: {
+    fontSize: 17,
+    fontWeight: "800",
+    color: "#222",
+    marginBottom: 12,
+  },
+
+  resultText: {
+    fontSize: 15,
+    color: "#555",
+    lineHeight: 24,
+  },
+
+  cardHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 12,
+  },
+
+  copyText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#E1267D",
+  },
+
+  tagsWrap: {
     flexDirection: "row",
     flexWrap: "wrap",
-    marginTop: 8,
+    marginTop: 2,
   },
 
-  tag: {
-    backgroundColor: "rgba(255,255,255,0.2)",
-    color: "#fff",
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 20,
-    marginRight: 8,
-    marginBottom: 8,
+  tagChip: {
+    backgroundColor: "#F3E8FA",
+    borderRadius: 18,
+    paddingVertical: 9,
+    paddingHorizontal: 14,
+    marginRight: 10,
+    marginBottom: 10,
+  },
+
+  tagChipText: {
+    color: "#7B1FA2",
+    fontWeight: "700",
     fontSize: 13,
+  },
+
+  publishButton: {
+    marginTop: 4,
+    borderRadius: 22,
+    overflow: "hidden",
+  },
+
+  publishGradient: {
+    paddingVertical: 18,
+    alignItems: "center",
+    borderRadius: 22,
+  },
+
+  publishButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "800",
   },
 });

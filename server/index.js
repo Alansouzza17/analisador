@@ -411,25 +411,25 @@ Regras:
 });
 
 /* ===========================================================
-   INSTAGRAM LOGIN - OAUTH FLOW
+   META / INSTAGRAM LOGIN - OAUTH FLOW
 =========================================================== */
 
-app.get("/auth/instagram", (req, res) => {
+app.get("/auth/meta", (req, res) => {
   const redirectUri = encodeURIComponent(
-    `${BASE_URL}/auth/instagram/callback`
+    `${BASE_URL}/auth/meta/callback`
   );
 
   const url =
-    `https://api.instagram.com/oauth/authorize` +
-    `?client_id=${process.env.IG_CLIENT_ID}` +
+    `https://www.facebook.com/v23.0/dialog/oauth` +
+    `?client_id=${process.env.META_APP_ID}` +
     `&redirect_uri=${redirectUri}` +
-    `&scope=user_profile,user_media` +
+    `&scope=pages_show_list,instagram_basic,business_management` +
     `&response_type=code`;
 
-  res.redirect(url);
+  return res.redirect(url);
 });
 
-app.get("/auth/instagram/callback", async (req, res) => {
+app.get("/auth/meta/callback", async (req, res) => {
   try {
     const { code } = req.query;
 
@@ -437,20 +437,16 @@ app.get("/auth/instagram/callback", async (req, res) => {
       return res.status(400).send("Código não recebido");
     }
 
-    const tokenUrl = "https://api.instagram.com/oauth/access_token";
+    const redirectUri = `${BASE_URL}/auth/meta/callback`;
 
-    const params = new URLSearchParams();
-    params.append("client_id", process.env.IG_CLIENT_ID);
-    params.append("client_secret", process.env.IG_CLIENT_SECRET);
-    params.append("grant_type", "authorization_code");
-    params.append("redirect_uri", `${BASE_URL}/auth/instagram/callback`);
-    params.append("code", code);
+    const tokenUrl =
+      `https://graph.facebook.com/v23.0/oauth/access_token` +
+      `?client_id=${process.env.META_APP_ID}` +
+      `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+      `&client_secret=${process.env.META_APP_SECRET}` +
+      `&code=${code}`;
 
-    const tokenResponse = await fetch(tokenUrl, {
-      method: "POST",
-      body: params,
-    });
-
+    const tokenResponse = await fetch(tokenUrl);
     const tokenText = await tokenResponse.text();
 
     if (!tokenText.trim()) {
@@ -467,16 +463,33 @@ app.get("/auth/instagram/callback", async (req, res) => {
     }
 
     if (!tokenResponse.ok || !tokenData.access_token) {
-      console.error(tokenData);
-      return res
-        .status(500)
-        .send("Erro ao trocar código por token do Instagram");
+      console.error("Erro token Meta:", tokenData);
+      return res.status(500).send(`
+        <html>
+          <body style="font-family: Arial; text-align: center; padding: 40px;">
+            <h2>Erro ao autenticar</h2>
+            <pre style="text-align:left; display:inline-block; max-width:800px; white-space:pre-wrap;">
+${JSON.stringify(tokenData, null, 2)}
+            </pre>
+          </body>
+        </html>
+      `);
     }
 
-    return res.json(tokenData);
+    return res.send(`
+      <html>
+        <body style="font-family: Arial; text-align: center; padding: 40px;">
+          <h2>Login realizado com sucesso</h2>
+          <p>Token recebido com sucesso.</p>
+          <pre style="text-align:left; display:inline-block; max-width:800px; white-space:pre-wrap;">
+${JSON.stringify(tokenData, null, 2)}
+          </pre>
+        </body>
+      </html>
+    `);
   } catch (error) {
-    console.error("Erro callback Instagram:", error);
-    return res.status(500).send("Erro no callback do Instagram");
+    console.error("Erro callback Meta:", error);
+    return res.status(500).send("Erro no callback do Meta");
   }
 });
 
