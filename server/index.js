@@ -428,9 +428,7 @@ ${JSON.stringify(
   {
     token_type: tokenData.token_type,
     expires_in: tokenData.expires_in,
-    access_token_preview: tokenData.access_token
-      ? `${tokenData.access_token.slice(0, 12)}...${tokenData.access_token.slice(-6)}`
-      : null,
+    access_token: tokenData.access_token,
   },
   null,
   2
