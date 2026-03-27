@@ -451,6 +451,76 @@ app.get("/auth/meta/test-user", async (req, res) => {
   }
 });
 
+app.get("/auth/meta/pages", async (req, res) => {
+  try {
+    const accessToken = req.query.access_token?.trim();
+
+    if (!accessToken) {
+      return res.status(400).json({ error: "access_token é obrigatório" });
+    }
+
+    const response = await fetch(
+      `https://graph.facebook.com/v23.0/me/accounts?access_token=${encodeURIComponent(accessToken)}`
+    );
+
+    const data = await response.json();
+    return res.status(response.ok ? 200 : 400).json(data);
+  } catch (error) {
+    console.error("Erro ao buscar páginas:", error);
+    return res.status(500).json({ error: "Erro interno ao buscar páginas" });
+  }
+});
+
+app.get("/auth/meta/instagram-account", async (req, res) => {
+  try {
+    const pageId = req.query.page_id;
+    const accessToken = req.query.access_token?.trim();
+
+    if (!pageId || !accessToken) {
+      return res
+        .status(400)
+        .json({ error: "page_id e access_token são obrigatórios" });
+    }
+
+    const response = await fetch(
+      `https://graph.facebook.com/v23.0/${pageId}?fields=instagram_business_account&access_token=${encodeURIComponent(accessToken)}`
+    );
+
+    const data = await response.json();
+    return res.status(response.ok ? 200 : 400).json(data);
+  } catch (error) {
+    console.error("Erro ao buscar conta do Instagram:", error);
+    return res
+      .status(500)
+      .json({ error: "Erro interno ao buscar conta do Instagram" });
+  }
+});
+
+app.get("/auth/meta/instagram-profile", async (req, res) => {
+  try {
+    const igUserId = req.query.ig_user_id;
+    const accessToken = req.query.access_token?.trim();
+
+    if (!igUserId || !accessToken) {
+      return res
+        .status(400)
+        .json({ error: "ig_user_id e access_token são obrigatórios" });
+    }
+
+    const response = await fetch(
+      `https://graph.facebook.com/v23.0/${igUserId}?fields=id,username,profile_picture_url,followers_count,follows_count,media_count&access_token=${encodeURIComponent(accessToken)}`
+    );
+
+    const data = await response.json();
+    return res.status(response.ok ? 200 : 400).json(data);
+  } catch (error) {
+    console.error("Erro ao buscar perfil do Instagram:", error);
+    return res
+      .status(500)
+      .json({ error: "Erro interno ao buscar perfil do Instagram" });
+  }
+});
+
 app.listen(PORT, HOST, () => {
   console.log(`Servidor rodando em ${BASE_URL}`);
 });
