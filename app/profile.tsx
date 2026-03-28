@@ -1,73 +1,245 @@
-import TopBar from "@/components/TopBar";
 import { LinearGradient } from "expo-linear-gradient";
-import { useLocalSearchParams, useRouter } from "expo-router";
-import { ScrollView, StyleSheet, Text, TouchableOpacity } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import PrimaryButton from "../components/PrimaryButton";
-import ProfileCard from "../components/ProfileCard";
-import { Profile } from "../types/profile";
+import { useRouter } from "expo-router";
+import React, { useEffect, useState } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  Image,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { API_URL } from "../services/api";
 
-export default function ProfileScreen() {
+type InstagramProfile = {
+  id: string;
+  username: string;
+  profile_picture_url: string;
+  followers_count: number;
+  follows_count: number;
+  media_count: number;
+};
+
+type InstagramMedia = {
+  id: string;
+  caption?: string;
+  media_type: string;
+  media_url: string;
+  timestamp: string;
+};
+
+export default function Profile() {
   const router = useRouter();
-  const { user } = useLocalSearchParams();
 
-   function irParaSugestao() {
-    router.push("/Sugestao");
+  const [profile, setProfile] = useState<InstagramProfile | null>(null);
+  const [posts, setPosts] = useState<InstagramMedia[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  async function fetchData() {
+    try {
+      setLoading(true);
+
+      const [profileResponse, postsResponse] = await Promise.all([
+        fetch(`${API_URL}/me/instagram/profile`),
+        fetch(`${API_URL}/me/instagram/media`),
+      ]);
+
+      const profileData = await profileResponse.json();
+      const postsData = await postsResponse.json();
+
+      if (!profileResponse.ok) {
+        throw new Error(profileData?.error || "Erro ao buscar perfil");
+      }
+
+      if (!postsResponse.ok) {
+        throw new Error(postsData?.error || "Erro ao buscar posts");
+      }
+
+      setProfile(profileData);
+      setPosts(postsData?.data || []);
+    } catch (error: any) {
+      Alert.alert("Erro", error?.message || "Não foi possível carregar os dados");
+    } finally {
+      setLoading(false);
+    }
   }
 
-  const mock: Profile = {
-    username: String(user),
-    avatar: "https://i.pravatar.cc/300",
-    followers: "1.234",
-    following: "567",
-  };
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  if (loading) {
+    return (
+      <LinearGradient
+        colors={["#feda75", "#fa7e1e", "#d62976", "#962fbf", "#4f5bd5"]}
+        style={styles.loadingContainer}
+      >
+        <ActivityIndicator size="large" color="#fff" />
+        <Text style={styles.loadingText}>Carregando perfil...</Text>
+      </LinearGradient>
+    );
+  }
 
   return (
     <LinearGradient
       colors={["#feda75", "#fa7e1e", "#d62976", "#962fbf", "#4f5bd5"]}
-      style={{ flex: 1 }}
+      style={styles.container}
     >
-      <TopBar title="Perfil" />
-      <SafeAreaView style={{ flex: 1 }}>
-        <ScrollView contentContainerStyle={styles.container}>
+      <ScrollView contentContainerStyle={styles.scroll}>
+        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+          <Text style={styles.backText}>Voltar</Text>
+        </TouchableOpacity>
 
-          <ProfileCard profile={mock} />
+        {profile && (
+          <View style={styles.headerCard}>
+            <Image
+              source={{ uri: profile.profile_picture_url }}
+              style={styles.avatar}
+            />
+            <Text style={styles.username}>@{profile.username}</Text>
 
-          <PrimaryButton
-            title="Análisar perfil"
-            onPress={() => router.push("/analysis")}
-          />
+            <View style={styles.infoRow}>
+              <View style={styles.infoBox}>
+                <Text style={styles.infoNumber}>{profile.followers_count}</Text>
+                <Text style={styles.infoLabel}>Seguidores</Text>
+              </View>
 
-          <TouchableOpacity onPress={irParaSugestao} style={styles.btn}>
-                       <Text style={styles.text}>Dicas de postagem</Text>
-                      </TouchableOpacity>
-          <PrimaryButton
-         title="Analisar Seguidores"
-         onPress={() => router.push("/followers")}
-         />
+              <View style={styles.infoBox}>
+                <Text style={styles.infoNumber}>{profile.follows_count}</Text>
+                <Text style={styles.infoLabel}>Seguindo</Text>
+              </View>
 
+              <View style={styles.infoBox}>
+                <Text style={styles.infoNumber}>{profile.media_count}</Text>
+                <Text style={styles.infoLabel}>Posts</Text>
+              </View>
+            </View>
+          </View>
+        )}
 
-          
+        <Text style={styles.sectionTitle}>Posts</Text>
 
-        </ScrollView>
-      </SafeAreaView>
+        <View style={styles.postsGrid}>
+          {posts.map((post) => (
+            <View key={post.id} style={styles.postCard}>
+              <Image source={{ uri: post.media_url }} style={styles.postImage} />
+              <Text style={styles.postType}>{post.media_type}</Text>
+              <Text numberOfLines={2} style={styles.caption}>
+                {post.caption || "Sem legenda"}
+              </Text>
+            </View>
+          ))}
+        </View>
+      </ScrollView>
     </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 20 },
-  back: { fontSize: 40, marginBottom: 15, color: "#fff" },
-     btn: {
-    backgroundColor: "#4F46E5",
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: "center",
-    marginTop: 12,
+  container: {
+    flex: 1,
   },
-  text: {
+  scroll: {
+    padding: 20,
+    paddingTop: 60,
+    paddingBottom: 40,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  loadingText: {
+    marginTop: 12,
     color: "#fff",
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "600",
+  },
+  backButton: {
+    alignSelf: "flex-start",
+    backgroundColor: "rgba(255,255,255,0.2)",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 12,
+    marginBottom: 20,
+  },
+  backText: {
+    color: "#fff",
+    fontWeight: "bold",
+  },
+  headerCard: {
+    backgroundColor: "rgba(255,255,255,0.15)",
+    borderRadius: 20,
+    padding: 20,
+    alignItems: "center",
+    marginBottom: 24,
+  },
+  avatar: {
+    width: 110,
+    height: 110,
+    borderRadius: 55,
+    borderWidth: 3,
+    borderColor: "#fff",
+    marginBottom: 14,
+  },
+  username: {
+    fontSize: 24,
+    fontWeight: "bold",
+    color: "#fff",
+    marginBottom: 18,
+  },
+  infoRow: {
+    flexDirection: "row",
+    width: "100%",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  infoBox: {
+    flex: 1,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    borderRadius: 16,
+    paddingVertical: 14,
+    alignItems: "center",
+  },
+  infoNumber: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#fff",
+  },
+  infoLabel: {
+    fontSize: 13,
+    color: "#f1f1f1",
+    marginTop: 4,
+  },
+  sectionTitle: {
+    fontSize: 22,
+    fontWeight: "bold",
+    color: "#fff",
+    marginBottom: 16,
+  },
+  postsGrid: {
+    gap: 16,
+  },
+  postCard: {
+    backgroundColor: "rgba(255,255,255,0.15)",
+    borderRadius: 18,
+    padding: 12,
+  },
+  postImage: {
+    width: "100%",
+    height: 260,
+    borderRadius: 14,
+    marginBottom: 10,
+  },
+  postType: {
+    color: "#fff",
+    fontWeight: "bold",
+    marginBottom: 6,
+  },
+  caption: {
+    color: "#fff",
+    fontSize: 14,
   },
 });

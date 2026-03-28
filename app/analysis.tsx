@@ -2,11 +2,13 @@ import ExpandableText from "@/components/ExpandableText";
 import { API_URL } from "@/services/api";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as Clipboard from "expo-clipboard";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Image,
   ScrollView,
   StatusBar,
@@ -18,13 +20,29 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 type IAResponse = {
-  nicho: string;
+  nicho?: string;
   score: number;
   bioSugerida: string;
   resumo: string;
-  pontosFortes: string;
-  pontosFracos: string;
-  sugestoes: string;
+  pontosFortes: string[] | string;
+  pontosFracos: string[] | string;
+  sugestoes: string[] | string;
+  username?: string;
+  metricas?: {
+    freqMediaDias?: number;
+    diasDesdeUltimoPost?: number | null;
+    mediaCaracteresLegenda?: number;
+    tiposDeMidia?: Record<string, number>;
+  };
+};
+
+type InstagramProfile = {
+  id: string;
+  username: string;
+  profile_picture_url: string;
+  followers_count: number;
+  follows_count: number;
+  media_count: number;
 };
 
 const ANALYSIS_STORAGE_KEY = "@last_profile_analysis";
@@ -33,12 +51,15 @@ export default function Analysis() {
   const router = useRouter();
 
   const [result, setResult] = useState<IAResponse | null>(null);
+  const [profile, setProfile] = useState<InstagramProfile | null>(null);
   const [loadingIA, setLoadingIA] = useState(false);
   const [loadingSaved, setLoadingSaved] = useState(true);
+  const [loadingProfile, setLoadingProfile] = useState(true);
   const [error, setError] = useState("");
 
   useEffect(() => {
     carregarUltimaAnalise();
+    carregarPerfil();
   }, []);
 
   async function carregarUltimaAnalise() {
@@ -53,6 +74,25 @@ export default function Analysis() {
       console.log("Erro ao carregar última análise:", error);
     } finally {
       setLoadingSaved(false);
+    }
+  }
+
+  async function carregarPerfil() {
+    try {
+      setLoadingProfile(true);
+
+      const response = await fetch(`${API_URL}/me/instagram/profile`);
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || "Erro ao carregar perfil");
+      }
+
+      setProfile(data);
+    } catch (error) {
+      console.log("Erro ao carregar perfil:", error);
+    } finally {
+      setLoadingProfile(false);
     }
   }
 
@@ -84,6 +124,31 @@ export default function Analysis() {
     return text.replace(/\*\*/g, "").replace(/#/g, "");
   }
 
+  function formatText(content: string[] | string | undefined) {
+    if (!content) return "Não disponível";
+
+    if (Array.isArray(content)) {
+      return content.map((item) => `• ${cleanMarkdown(item)}`).join("\n\n");
+    }
+
+    return cleanMarkdown(content);
+  }
+
+  async function copiarBio() {
+    if (!result?.bioSugerida) return;
+
+    try {
+      await Clipboard.setStringAsync(cleanMarkdown(result.bioSugerida));
+      Alert.alert("Copiado", "Bio copiada com sucesso.");
+    } catch (error) {
+      Alert.alert("Erro", "Não foi possível copiar a bio.");
+    }
+  }
+
+  const usernameExibicao = profile?.username || result?.username || "Instagram";
+  const avatarExibicao =
+    profile?.profile_picture_url || require("../assets/images/perfil.png");
+
   return (
     <View style={styles.screen}>
       <StatusBar barStyle="dark-content" />
@@ -106,14 +171,18 @@ export default function Analysis() {
 
               <View>
                 <Text style={styles.headerTitle}>Análise do Perfil</Text>
-                <Text style={styles.headerSubtitle}>@username_ia</Text>
+                <Text style={styles.headerSubtitle}>@{usernameExibicao}</Text>
               </View>
             </View>
 
-            <Image
-              source={require("../assets/images/perfil.png")}
-              style={styles.headerAvatar}
-            />
+            {typeof avatarExibicao === "string" ? (
+              <Image
+                source={{ uri: avatarExibicao }}
+                style={styles.headerAvatar}
+              />
+            ) : (
+              <Image source={avatarExibicao} style={styles.headerAvatar} />
+            )}
           </View>
         </SafeAreaView>
       </LinearGradient>
@@ -123,15 +192,18 @@ export default function Analysis() {
           contentContainerStyle={styles.container}
           showsVerticalScrollIndicator={false}
         >
-          {loadingSaved ? (
+          {(loadingSaved || loadingProfile) && !result ? (
             <View style={styles.center}>
               <ActivityIndicator size="large" color="#d62976" />
-              <Text style={styles.loadingText}>Carregando análise salva...</Text>
+              <Text style={styles.loadingText}>Carregando análise...</Text>
             </View>
           ) : null}
 
           {!loadingSaved && !result && !loadingIA && (
-            <TouchableOpacity style={styles.analyzeButton} onPress={analisarPerfil}>
+            <TouchableOpacity
+              style={styles.analyzeButton}
+              onPress={analisarPerfil}
+            >
               <Text style={styles.analyzeButtonText}>Analisar Perfil Agora</Text>
             </TouchableOpacity>
           )}
@@ -166,14 +238,20 @@ export default function Analysis() {
                   </View>
                 </View>
 
-                <Text style={styles.scoreFooter}>📈 +12% que a média do nicho</Text>
+                <Text style={styles.scoreFooter}>
+                  {result.score >= 70
+                    ? "🔥 Perfil com bom potencial de engajamento"
+                    : result.score >= 50
+                    ? "📈 Perfil com boa base para crescer"
+                    : "⚠️ Perfil com bastante espaço para melhorar"}
+                </Text>
               </View>
 
               <View style={styles.topInfoRow}>
                 <View style={styles.smallInfoCard}>
                   <Text style={styles.smallCardTitle}>🧩 Nicho</Text>
                   <ExpandableText
-                    text={cleanMarkdown(result.nicho)}
+                    text={cleanMarkdown(result.nicho || "Não informado")}
                     maxLength={120}
                   />
                 </View>
@@ -181,7 +259,7 @@ export default function Analysis() {
                 <View style={styles.smallInfoCard}>
                   <Text style={styles.smallCardTitle}>✨ Resumo</Text>
                   <ExpandableText
-                    text={cleanMarkdown(result.resumo)}
+                    text={cleanMarkdown(result.resumo || "Sem resumo")}
                     maxLength={120}
                   />
                 </View>
@@ -190,14 +268,14 @@ export default function Analysis() {
               <View style={styles.bioCard}>
                 <View style={styles.bioHeader}>
                   <Text style={styles.bioTitle}>✍️ Bio Sugerida</Text>
-                  <TouchableOpacity>
+                  <TouchableOpacity onPress={copiarBio}>
                     <Text style={styles.copyText}>Copiar</Text>
                   </TouchableOpacity>
                 </View>
 
                 <View style={styles.bioInnerBox}>
                   <Text style={styles.bioText}>
-                    {cleanMarkdown(result.bioSugerida)}
+                    {cleanMarkdown(result.bioSugerida || "Sem bio sugerida")}
                   </Text>
                 </View>
               </View>
@@ -206,19 +284,59 @@ export default function Analysis() {
                 <View style={styles.listCard}>
                   <Text style={styles.listTitle}>Pontos Fortes</Text>
                   <ExpandableText
-                    text={cleanMarkdown(result.pontosFortes)}
-                    maxLength={120}
+                    text={formatText(result.pontosFortes)}
+                    maxLength={160}
                   />
                 </View>
 
                 <View style={styles.listCard}>
                   <Text style={styles.listTitle}>Pontos Fracos</Text>
                   <ExpandableText
-                    text={cleanMarkdown(result.pontosFracos)}
-                    maxLength={120}
+                    text={formatText(result.pontosFracos)}
+                    maxLength={160}
                   />
                 </View>
               </View>
+
+              {result.metricas && (
+                <View style={styles.metricsCard}>
+                  <Text style={styles.metricsTitle}>📊 Métricas do Perfil</Text>
+
+                  <Text style={styles.metricItem}>
+                    Frequência média de posts:{" "}
+                    <Text style={styles.metricValue}>
+                      {result.metricas.freqMediaDias ?? 0} dias
+                    </Text>
+                  </Text>
+
+                  <Text style={styles.metricItem}>
+                    Dias desde o último post:{" "}
+                    <Text style={styles.metricValue}>
+                      {result.metricas.diasDesdeUltimoPost ?? "N/A"}
+                    </Text>
+                  </Text>
+
+                  <Text style={styles.metricItem}>
+                    Média de caracteres por legenda:{" "}
+                    <Text style={styles.metricValue}>
+                      {result.metricas.mediaCaracteresLegenda ?? 0}
+                    </Text>
+                  </Text>
+
+                  {result.metricas.tiposDeMidia && (
+                    <View style={styles.mediaTypesBox}>
+                      <Text style={styles.metricItem}>Tipos de mídia:</Text>
+                      {Object.entries(result.metricas.tiposDeMidia).map(
+                        ([tipo, quantidade]) => (
+                          <Text key={tipo} style={styles.mediaTypeItem}>
+                            • {tipo}: {quantidade}
+                          </Text>
+                        )
+                      )}
+                    </View>
+                  )}
+                </View>
+              )}
 
               <LinearGradient
                 colors={["#fffdfe", "#da2f71"]}
@@ -229,8 +347,8 @@ export default function Analysis() {
                 <Text style={styles.suggestionTitle}>🚀 Sugestões de IA</Text>
 
                 <ExpandableText
-                  text={cleanMarkdown(result.sugestoes)}
-                  maxLength={140}
+                  text={formatText(result.sugestoes)}
+                  maxLength={180}
                 />
 
                 <TouchableOpacity style={styles.actionButton}>
@@ -429,6 +547,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
     color: "#222",
+    textAlign: "center",
   },
 
   topInfoRow: {
@@ -527,6 +646,47 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: "#222",
     marginBottom: 14,
+  },
+
+  metricsCard: {
+    backgroundColor: "#fff",
+    borderRadius: 26,
+    padding: 20,
+    marginTop: 18,
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
+  },
+
+  metricsTitle: {
+    fontSize: 17,
+    fontWeight: "800",
+    color: "#232323",
+    marginBottom: 14,
+  },
+
+  metricItem: {
+    fontSize: 14,
+    color: "#333",
+    marginBottom: 8,
+    lineHeight: 22,
+  },
+
+  metricValue: {
+    fontWeight: "700",
+    color: "#d62976",
+  },
+
+  mediaTypesBox: {
+    marginTop: 8,
+  },
+
+  mediaTypeItem: {
+    fontSize: 14,
+    color: "#444",
+    marginBottom: 6,
   },
 
   suggestionCard: {

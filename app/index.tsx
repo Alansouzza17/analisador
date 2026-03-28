@@ -16,6 +16,8 @@ import {
   View,
 } from "react-native";
 
+const USER_STORAGE_KEY = "@user_name";
+
 export default function Login() {
   const router = useRouter();
 
@@ -29,7 +31,7 @@ export default function Login() {
 
   async function verificarLogin() {
     try {
-      const savedName = await AsyncStorage.getItem("@user_name");
+      const savedName = await AsyncStorage.getItem(USER_STORAGE_KEY);
 
       if (savedName) {
         router.replace("/home");
@@ -42,13 +44,11 @@ export default function Login() {
   }
 
   async function handleEntrar() {
-    if (!nome.trim()) {
-      return;
-    }
+    if (!nome.trim()) return;
 
     try {
       setSubmitting(true);
-      await AsyncStorage.setItem("@user_name", nome.trim());
+      await AsyncStorage.setItem(USER_STORAGE_KEY, nome.trim());
       router.replace("/home");
     } catch (error) {
       console.log("Erro ao salvar usuário:", error);
@@ -57,16 +57,16 @@ export default function Login() {
     }
   }
 
-  async function handleInstagramLogin() {
+  async function handleEntrarInstagram() {
     try {
       setSubmitting(true);
 
-      const nomeFake = "Alan";
-      await AsyncStorage.setItem("@user_name", nomeFake);
+      const nomeSalvo = nome.trim() || "Alan";
+      await AsyncStorage.setItem(USER_STORAGE_KEY, nomeSalvo);
 
       router.replace("/home");
     } catch (error) {
-      console.log("Erro no login Instagram:", error);
+      console.log("Erro ao entrar com Instagram:", error);
     } finally {
       setSubmitting(false);
     }
@@ -76,13 +76,14 @@ export default function Login() {
     return (
       <LinearGradient
         colors={["#feda75", "#fa7e1e", "#d62976", "#962fbf", "#4f5bd5"]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.loadingContainer}
+        style={styles.screen}
       >
-        <StatusBar barStyle="light-content" />
-        <ActivityIndicator size="large" color="#fff" />
-        <Text style={styles.loadingText}>Carregando...</Text>
+        <SafeAreaView style={styles.safe}>
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#fff" />
+            <Text style={styles.loadingText}>Carregando...</Text>
+          </View>
+        </SafeAreaView>
       </LinearGradient>
     );
   }
@@ -98,8 +99,8 @@ export default function Login() {
 
       <SafeAreaView style={styles.safe}>
         <KeyboardAvoidingView
-          style={styles.flex}
           behavior={Platform.OS === "ios" ? "padding" : undefined}
+          style={styles.flex}
         >
           <View style={styles.topArea}>
             <View style={styles.logoCircle}>
@@ -136,17 +137,17 @@ export default function Login() {
                 placeholder="Digite seu nome"
                 placeholderTextColor="#999"
                 style={styles.input}
-                editable={!submitting}
+                autoCapitalize="none"
               />
             </View>
 
             <TouchableOpacity
               style={[
                 styles.primaryButton,
-                (!nome.trim() || submitting) && styles.primaryButtonDisabled,
+                submitting && styles.primaryButtonDisabled,
               ]}
               onPress={handleEntrar}
-              disabled={!nome.trim() || submitting}
+              disabled={submitting}
             >
               {submitting ? (
                 <ActivityIndicator color="#fff" />
@@ -156,24 +157,23 @@ export default function Login() {
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={styles.secondaryButton}
-              onPress={handleInstagramLogin}
+              style={[
+                styles.secondaryButton,
+                submitting && styles.primaryButtonDisabled,
+              ]}
+              onPress={handleEntrarInstagram}
               disabled={submitting}
             >
-              <Text style={styles.secondaryButtonText}>
-                Entrar com Instagram
-              </Text>
+              <Text style={styles.secondaryButtonText}>Entrar com Instagram</Text>
             </TouchableOpacity>
 
             <View style={styles.footerInfo}>
               <View style={styles.footerChip}>
                 <Text style={styles.footerChipText}>IA</Text>
               </View>
-
               <View style={styles.footerChip}>
                 <Text style={styles.footerChipText}>Score</Text>
               </View>
-
               <View style={styles.footerChip}>
                 <Text style={styles.footerChipText}>Insights</Text>
               </View>
