@@ -70,6 +70,14 @@ export default function Profile() {
     fetchData();
   }, []);
 
+  function formatDate(dateString: string) {
+    try {
+      return new Date(dateString).toLocaleDateString("pt-BR");
+    } catch {
+      return dateString;
+    }
+  }
+
   if (loading) {
     return (
       <LinearGradient
@@ -88,9 +96,15 @@ export default function Profile() {
       style={styles.container}
     >
       <ScrollView contentContainerStyle={styles.scroll}>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-          <Text style={styles.backText}>Voltar</Text>
-        </TouchableOpacity>
+        <View style={styles.topBar}>
+          <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+            <Text style={styles.backText}>Voltar</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.refreshButton} onPress={fetchData}>
+            <Text style={styles.refreshText}>Atualizar</Text>
+          </TouchableOpacity>
+        </View>
 
         {profile && (
           <View style={styles.headerCard}>
@@ -121,17 +135,27 @@ export default function Profile() {
 
         <Text style={styles.sectionTitle}>Posts</Text>
 
-        <View style={styles.postsGrid}>
-          {posts.map((post) => (
-            <View key={post.id} style={styles.postCard}>
-              <Image source={{ uri: post.media_url }} style={styles.postImage} />
-              <Text style={styles.postType}>{post.media_type}</Text>
-              <Text numberOfLines={2} style={styles.caption}>
-                {post.caption || "Sem legenda"}
-              </Text>
-            </View>
-          ))}
-        </View>
+        {posts.length === 0 ? (
+          <View style={styles.emptyBox}>
+            <Text style={styles.emptyTitle}>Nenhum post encontrado</Text>
+            <Text style={styles.emptyText}>
+              Quando houver mídia disponível, ela aparecerá aqui.
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.postsGrid}>
+            {posts.map((post) => (
+              <View key={post.id} style={styles.postCard}>
+                <Image source={{ uri: post.media_url }} style={styles.postImage} />
+                <Text style={styles.postType}>{post.media_type}</Text>
+                <Text style={styles.postDate}>{formatDate(post.timestamp)}</Text>
+                <Text numberOfLines={2} style={styles.caption}>
+                  {post.caption || "Sem legenda"}
+                </Text>
+              </View>
+            ))}
+          </View>
+        )}
       </ScrollView>
     </LinearGradient>
   );
@@ -157,15 +181,29 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
   },
+  topBar: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 20,
+  },
   backButton: {
     alignSelf: "flex-start",
     backgroundColor: "rgba(255,255,255,0.2)",
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 12,
-    marginBottom: 20,
   },
   backText: {
+    color: "#fff",
+    fontWeight: "bold",
+  },
+  refreshButton: {
+    backgroundColor: "rgba(255,255,255,0.2)",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 12,
+  },
+  refreshText: {
     color: "#fff",
     fontWeight: "bold",
   },
@@ -236,10 +274,32 @@ const styles = StyleSheet.create({
   postType: {
     color: "#fff",
     fontWeight: "bold",
+    marginBottom: 4,
+  },
+  postDate: {
+    color: "#f3f3f3",
+    fontSize: 12,
     marginBottom: 6,
   },
   caption: {
     color: "#fff",
     fontSize: 14,
+  },
+  emptyBox: {
+    backgroundColor: "rgba(255,255,255,0.15)",
+    borderRadius: 18,
+    padding: 20,
+    alignItems: "center",
+  },
+  emptyTitle: {
+    color: "#fff",
+    fontSize: 18,
+    fontWeight: "bold",
+    marginBottom: 8,
+  },
+  emptyText: {
+    color: "#f1f1f1",
+    fontSize: 14,
+    textAlign: "center",
   },
 });

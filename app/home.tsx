@@ -230,6 +230,19 @@ export default function Home() {
                 Veja métricas e organização do perfil
               </Text>
             </TouchableOpacity>
+
+            <TouchableOpacity
+  style={styles.actionCard}
+  onPress={() => router.push("/metricas")}
+>
+  <View style={styles.actionIconBox}>
+    <Ionicons name="stats-chart-outline" size={24} color="#d62976" />
+  </View>
+  <Text style={styles.actionTitle}>Métricas</Text>
+  <Text style={styles.actionSubtitle}>
+    Veja score, frequência e desempenho
+  </Text>
+</TouchableOpacity>
           </View>
 
           <TouchableOpacity style={styles.logoutButton} onPress={sair}>
