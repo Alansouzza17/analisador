@@ -243,6 +243,19 @@ export default function Home() {
     Veja score, frequência e desempenho
   </Text>
 </TouchableOpacity>
+
+        <TouchableOpacity
+  style={styles.actionCard}
+  onPress={() => router.push("/importar-seguidores")}
+>
+  <View style={styles.actionIconBox}>
+    <Ionicons name="document-attach-outline" size={24} color="#d62976" />
+  </View>
+  <Text style={styles.actionTitle}>Importar</Text>
+  <Text style={styles.actionSubtitle}>
+    Adicione um arquivo manual de seguidores
+  </Text>
+</TouchableOpacity>
           </View>
 
           <TouchableOpacity style={styles.logoutButton} onPress={sair}>

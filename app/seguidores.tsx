@@ -1,8 +1,9 @@
 import { API_URL } from "@/services/api";
 import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { LinearGradient } from "expo-linear-gradient";
-import { useRouter } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { useFocusEffect, useRouter } from "expo-router";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -25,52 +26,114 @@ type InstagramProfile = {
   media_count: number;
 };
 
-type InstagramMedia = {
-  id: string;
-  caption?: string;
-  media_type: string;
-  media_url: string;
-  timestamp: string;
+type UserItem = {
+  username: string;
 };
 
-type FilterType = "todos" | "com_legenda" | "sem_legenda";
+type TabType = "followers" | "following";
+type FilterType =
+  | "todos"
+  | "nao_segue"
+  | "voce_nao_segue"
+  | "deixaram_de_seguir"
+  | "novos";
+
+const FOLLOWERS_STORAGE_KEY = "@followers_importados";
+const FOLLOWING_STORAGE_KEY = "@following_importados";
+const PREVIOUS_FOLLOWERS_STORAGE_KEY = "@followers_importados_anterior";
+const LAST_API_FOLLOWERS_COUNT_KEY = "@last_api_followers_count";
+const LAST_API_FOLLOWING_COUNT_KEY = "@last_api_following_count";
 
 export default function SeguidoresScreen() {
   const router = useRouter();
 
   const [profile, setProfile] = useState<InstagramProfile | null>(null);
-  const [posts, setPosts] = useState<InstagramMedia[]>([]);
+  const [followers, setFollowers] = useState<UserItem[]>([]);
+  const [following, setFollowing] = useState<UserItem[]>([]);
+  const [previousFollowers, setPreviousFollowers] = useState<UserItem[]>([]);
+  const [lastApiFollowers, setLastApiFollowers] = useState<number | null>(null);
+  const [lastApiFollowing, setLastApiFollowing] = useState<number | null>(null);
+  const [apiReferenceLoaded, setApiReferenceLoaded] = useState(false);
+
   const [initialLoading, setInitialLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
+  const [activeTab, setActiveTab] = useState<TabType>("followers");
   const [activeFilter, setActiveFilter] = useState<FilterType>("todos");
 
   useEffect(() => {
     carregarDados();
   }, []);
 
+  useFocusEffect(
+    useCallback(() => {
+      carregarDados();
+    }, [])
+  );
+
   async function carregarDados() {
     try {
-      const [profileResponse, mediaResponse] = await Promise.all([
+      const [
+        profileResponse,
+        savedFollowers,
+        savedFollowing,
+        savedPreviousFollowers,
+        savedLastFollowers,
+        savedLastFollowing,
+      ] = await Promise.all([
         fetch(`${API_URL}/me/instagram/profile`),
-        fetch(`${API_URL}/me/instagram/media`),
+        AsyncStorage.getItem(FOLLOWERS_STORAGE_KEY),
+        AsyncStorage.getItem(FOLLOWING_STORAGE_KEY),
+        AsyncStorage.getItem(PREVIOUS_FOLLOWERS_STORAGE_KEY),
+        AsyncStorage.getItem(LAST_API_FOLLOWERS_COUNT_KEY),
+        AsyncStorage.getItem(LAST_API_FOLLOWING_COUNT_KEY),
       ]);
 
       const profileData = await profileResponse.json();
-      const mediaData = await mediaResponse.json();
 
       if (!profileResponse.ok) {
         throw new Error(profileData?.error || "Erro ao buscar perfil");
       }
 
-      if (!mediaResponse.ok) {
-        throw new Error(mediaData?.error || "Erro ao buscar posts");
+      setProfile(profileData);
+      setFollowers(savedFollowers ? JSON.parse(savedFollowers) : []);
+      setFollowing(savedFollowing ? JSON.parse(savedFollowing) : []);
+      setPreviousFollowers(
+        savedPreviousFollowers ? JSON.parse(savedPreviousFollowers) : []
+      );
+
+      const parsedLastFollowers = savedLastFollowers
+        ? Number(savedLastFollowers)
+        : null;
+
+      const parsedLastFollowing = savedLastFollowing
+        ? Number(savedLastFollowing)
+        : null;
+
+      let effectiveLastFollowers = parsedLastFollowers;
+      let effectiveLastFollowing = parsedLastFollowing;
+
+      if (effectiveLastFollowers === null) {
+        effectiveLastFollowers = profileData.followers_count;
+        await AsyncStorage.setItem(
+          LAST_API_FOLLOWERS_COUNT_KEY,
+          String(profileData.followers_count)
+        );
       }
 
-      setProfile(profileData);
-      setPosts(mediaData?.data || []);
+      if (effectiveLastFollowing === null) {
+        effectiveLastFollowing = profileData.follows_count;
+        await AsyncStorage.setItem(
+          LAST_API_FOLLOWING_COUNT_KEY,
+          String(profileData.follows_count)
+        );
+      }
+
+      setLastApiFollowers(effectiveLastFollowers);
+      setLastApiFollowing(effectiveLastFollowing);
+      setApiReferenceLoaded(true);
     } catch (error) {
-      console.warn("Erro ao carregar dados da tela seguidores:", error);
+      console.warn("Erro ao carregar tela seguidores:", error);
     } finally {
       setInitialLoading(false);
       setRefreshing(false);
@@ -82,73 +145,137 @@ export default function SeguidoresScreen() {
     carregarDados();
   }
 
-  const filteredPosts = useMemo(() => {
-    let base = [...posts];
+  const naoSeguemDeVolta = useMemo(() => {
+    const followersSet = new Set(
+      followers.map((item) => item.username.toLowerCase())
+    );
 
-    if (activeFilter === "com_legenda") {
-      base = base.filter((item) => !!item.caption?.trim());
+    return following.filter(
+      (item) => !followersSet.has(item.username.toLowerCase())
+    );
+  }, [followers, following]);
+
+  const seguidoresQueNaoSeguo = useMemo(() => {
+    const followingSet = new Set(
+      following.map((item) => item.username.toLowerCase())
+    );
+
+    return followers.filter(
+      (item) => !followingSet.has(item.username.toLowerCase())
+    );
+  }, [followers, following]);
+
+  const quemDeixouDeSeguir = useMemo(() => {
+    const currentFollowersSet = new Set(
+      followers.map((item) => item.username.toLowerCase())
+    );
+
+    return previousFollowers.filter(
+      (item) => !currentFollowersSet.has(item.username.toLowerCase())
+    );
+  }, [previousFollowers, followers]);
+
+  const novosSeguidores = useMemo(() => {
+    const previousFollowersSet = new Set(
+      previousFollowers.map((item) => item.username.toLowerCase())
+    );
+
+    return followers.filter(
+      (item) => !previousFollowersSet.has(item.username.toLowerCase())
+    );
+  }, [previousFollowers, followers]);
+
+  const followersChanged = useMemo(() => {
+    if (!apiReferenceLoaded || !profile || lastApiFollowers === null) {
+      return false;
     }
 
-    if (activeFilter === "sem_legenda") {
-      base = base.filter((item) => !item.caption?.trim());
+    return profile.followers_count !== lastApiFollowers;
+  }, [apiReferenceLoaded, profile, lastApiFollowers]);
+
+  const followingChanged = useMemo(() => {
+    if (!apiReferenceLoaded || !profile || lastApiFollowing === null) {
+      return false;
     }
 
-    if (search.trim()) {
-      const q = search.toLowerCase().trim();
-      base = base.filter((item) =>
-        (item.caption || "").toLowerCase().includes(q)
+    return profile.follows_count !== lastApiFollowing;
+  }, [apiReferenceLoaded, profile, lastApiFollowing]);
+
+  const showUpdateMessage = followersChanged || followingChanged;
+
+  const updateMessage = useMemo(() => {
+    const parts: string[] = [];
+
+    if (followersChanged && profile) {
+      parts.push(
+        `Seguidores: antes ${lastApiFollowers ?? 0}, agora ${profile.followers_count}`
       );
     }
 
-    return base;
-  }, [posts, search, activeFilter]);
-
-  const postsComLegenda = posts.filter((item) => !!item.caption?.trim()).length;
-  const postsSemLegenda = posts.filter((item) => !item.caption?.trim()).length;
-
-  function formatarData(dataIso: string) {
-    try {
-      return new Date(dataIso).toLocaleDateString("pt-BR");
-    } catch {
-      return dataIso;
+    if (followingChanged && profile) {
+      parts.push(
+        `Seguindo: antes ${lastApiFollowing ?? 0}, agora ${profile.follows_count}`
+      );
     }
-  }
 
-  const renderItem = ({ item }: { item: InstagramMedia }) => (
-    <View style={styles.postCard}>
-      <Image source={{ uri: item.media_url }} style={styles.postImage} />
+    return parts.join("\n");
+  }, [
+    followersChanged,
+    followingChanged,
+    profile,
+    lastApiFollowers,
+    lastApiFollowing,
+  ]);
 
-      <View style={styles.postInfo}>
-        <Text style={styles.postType}>{item.media_type}</Text>
-        <Text style={styles.postDate}>{formatarData(item.timestamp)}</Text>
+  const currentList = useMemo(() => {
+    if (activeFilter === "nao_segue") {
+      return naoSeguemDeVolta;
+    }
 
-        <Text style={styles.caption} numberOfLines={3}>
-          {item.caption?.trim() ? item.caption : "Sem legenda"}
+    if (activeFilter === "voce_nao_segue") {
+      return seguidoresQueNaoSeguo;
+    }
+
+    if (activeFilter === "deixaram_de_seguir") {
+      return quemDeixouDeSeguir;
+    }
+
+    if (activeFilter === "novos") {
+      return novosSeguidores;
+    }
+
+    return activeTab === "followers" ? followers : following;
+  }, [
+    activeFilter,
+    activeTab,
+    followers,
+    following,
+    naoSeguemDeVolta,
+    seguidoresQueNaoSeguo,
+    quemDeixouDeSeguir,
+    novosSeguidores,
+  ]);
+
+  const filteredList = useMemo(() => {
+    if (!search.trim()) return currentList;
+
+    const q = search.toLowerCase().trim();
+
+    return currentList.filter((item) =>
+      item.username.toLowerCase().includes(q)
+    );
+  }, [currentList, search]);
+
+  const renderItem = ({ item }: { item: UserItem }) => (
+    <View style={styles.userCard}>
+      <View style={styles.userAvatar}>
+        <Text style={styles.userAvatarText}>
+          {item.username.charAt(0).toUpperCase()}
         </Text>
+      </View>
 
-        <View style={styles.statusRow}>
-          <View
-            style={[
-              styles.statusBadge,
-              item.caption?.trim() ? styles.greenBadge : styles.redBadge,
-            ]}
-          >
-            <Text
-              style={[
-                styles.statusText,
-                item.caption?.trim() ? styles.greenText : styles.redText,
-              ]}
-            >
-              {item.caption?.trim() ? "Com legenda" : "Sem legenda"}
-            </Text>
-          </View>
-
-          <View style={[styles.statusBadge, styles.newBadge]}>
-            <Text style={[styles.statusText, styles.newText]}>
-              {item.media_type}
-            </Text>
-          </View>
-        </View>
+      <View style={styles.userInfo}>
+        <Text style={styles.userName}>@{item.username}</Text>
       </View>
     </View>
   );
@@ -199,8 +326,8 @@ export default function SeguidoresScreen() {
           </View>
         ) : (
           <FlatList
-            data={filteredPosts}
-            keyExtractor={(item) => item.id}
+            data={filteredList}
+            keyExtractor={(item, index) => `${item.username}-${index}`}
             renderItem={renderItem}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.listContent}
@@ -213,16 +340,61 @@ export default function SeguidoresScreen() {
             }
             ListHeaderComponent={
               <>
+                <View style={styles.infoWarning}>
+                  <Ionicons
+                    name="information-circle"
+                    size={18}
+                    color="#2563EB"
+                  />
+                  <Text style={styles.infoWarningText}>
+                    A quantidade importada pode ser diferente do Instagram. O
+                    arquivo pode conter contas desativadas, removidas,
+                    bloqueadas ou indisponíveis no momento.
+                  </Text>
+                </View>
+
+                {showUpdateMessage && (
+                  <View style={styles.updateCard}>
+                    <View style={styles.updateHeader}>
+                      <Ionicons
+                        name="alert-circle"
+                        size={18}
+                        color="#B45309"
+                      />
+                      <Text style={styles.updateTitle}>
+                        Atualize sua lista
+                      </Text>
+                    </View>
+
+                    <Text style={styles.updateText}>
+                      O número real retornado pela API mudou. Importe uma nova
+                      lista para manter a análise correta.
+                    </Text>
+
+                    <Text style={styles.updateDetails}>{updateMessage}</Text>
+
+                    <TouchableOpacity
+                      style={styles.updateButton}
+                      onPress={() => router.push("/importar-seguidores")}
+                      activeOpacity={0.85}
+                    >
+                      <Text style={styles.updateButtonText}>
+                        Atualizar lista
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+
                 <View style={styles.statsRow}>
                   <View style={styles.statCard}>
-                    <Text style={styles.statLabel}>Seguidores</Text>
+                    <Text style={styles.statLabel}>Seguidores API</Text>
                     <Text style={styles.statValue}>
                       {profile?.followers_count ?? 0}
                     </Text>
                   </View>
 
                   <View style={styles.statCard}>
-                    <Text style={styles.statLabel}>Seguindo</Text>
+                    <Text style={styles.statLabel}>Seguindo API</Text>
                     <Text style={styles.statValue}>
                       {profile?.follows_count ?? 0}
                     </Text>
@@ -236,31 +408,151 @@ export default function SeguidoresScreen() {
                   </View>
                 </View>
 
-                <View style={styles.infoBox}>
-                  <Text style={styles.infoTitle}>Observação</Text>
-                  <Text style={styles.infoText}>
-                    Esta tela mostra métricas reais do perfil e os posts
-                    encontrados pela API. A lista completa de seguidores não está
-                    disponível no backend atual.
-                  </Text>
+                <View style={styles.secondaryStatsRow}>
+                  <View style={styles.secondaryCard}>
+                    <Text style={styles.secondaryLabel}>
+                      Importados seguidores
+                    </Text>
+                    <Text style={styles.secondaryValue}>{followers.length}</Text>
+                  </View>
+
+                  <View style={styles.secondaryCard}>
+                    <Text style={styles.secondaryLabel}>
+                      Importados seguindo
+                    </Text>
+                    <Text style={styles.secondaryValue}>{following.length}</Text>
+                  </View>
                 </View>
 
                 <View style={styles.secondaryStatsRow}>
-                  <View style={styles.secondaryCard}>
-                    <Text style={styles.secondaryLabel}>Com legenda</Text>
-                    <Text style={styles.secondaryValue}>{postsComLegenda}</Text>
-                  </View>
+                  <TouchableOpacity
+                    style={[
+                      styles.secondaryCard,
+                      activeFilter === "nao_segue" && styles.cardActive,
+                    ]}
+                    onPress={() => {
+                      setActiveFilter("nao_segue");
+                      setActiveTab("following");
+                    }}
+                    activeOpacity={0.85}
+                  >
+                    <Text
+                      style={[
+                        styles.secondaryLabel,
+                        activeFilter === "nao_segue" && styles.cardActiveLabel,
+                      ]}
+                    >
+                      Não seguem de volta
+                    </Text>
+                    <Text
+                      style={[
+                        styles.secondaryValue,
+                        activeFilter === "nao_segue" && styles.cardActiveValue,
+                      ]}
+                    >
+                      {naoSeguemDeVolta.length}
+                    </Text>
+                  </TouchableOpacity>
 
-                  <View style={styles.secondaryCard}>
-                    <Text style={styles.secondaryLabel}>Sem legenda</Text>
-                    <Text style={styles.secondaryValue}>{postsSemLegenda}</Text>
-                  </View>
+                  <TouchableOpacity
+                    style={[
+                      styles.secondaryCard,
+                      activeFilter === "voce_nao_segue" && styles.cardActive,
+                    ]}
+                    onPress={() => {
+                      setActiveFilter("voce_nao_segue");
+                      setActiveTab("followers");
+                    }}
+                    activeOpacity={0.85}
+                  >
+                    <Text
+                      style={[
+                        styles.secondaryLabel,
+                        activeFilter === "voce_nao_segue" &&
+                          styles.cardActiveLabel,
+                      ]}
+                    >
+                      Você não segue
+                    </Text>
+                    <Text
+                      style={[
+                        styles.secondaryValue,
+                        activeFilter === "voce_nao_segue" &&
+                          styles.cardActiveValue,
+                      ]}
+                    >
+                      {seguidoresQueNaoSeguo.length}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.secondaryStatsRow}>
+                  <TouchableOpacity
+                    style={[
+                      styles.secondaryCard,
+                      activeFilter === "deixaram_de_seguir" &&
+                        styles.cardActive,
+                    ]}
+                    onPress={() => {
+                      setActiveFilter("deixaram_de_seguir");
+                      setActiveTab("followers");
+                    }}
+                    activeOpacity={0.85}
+                  >
+                    <Text
+                      style={[
+                        styles.secondaryLabel,
+                        activeFilter === "deixaram_de_seguir" &&
+                          styles.cardActiveLabel,
+                      ]}
+                    >
+                      Deixaram de seguir
+                    </Text>
+                    <Text
+                      style={[
+                        styles.secondaryValue,
+                        activeFilter === "deixaram_de_seguir" &&
+                          styles.cardActiveValue,
+                      ]}
+                    >
+                      {quemDeixouDeSeguir.length}
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.secondaryCard,
+                      activeFilter === "novos" && styles.cardActive,
+                    ]}
+                    onPress={() => {
+                      setActiveFilter("novos");
+                      setActiveTab("followers");
+                    }}
+                    activeOpacity={0.85}
+                  >
+                    <Text
+                      style={[
+                        styles.secondaryLabel,
+                        activeFilter === "novos" && styles.cardActiveLabel,
+                      ]}
+                    >
+                      Novos seguidores
+                    </Text>
+                    <Text
+                      style={[
+                        styles.secondaryValue,
+                        activeFilter === "novos" && styles.cardActiveValue,
+                      ]}
+                    >
+                      {novosSeguidores.length}
+                    </Text>
+                  </TouchableOpacity>
                 </View>
 
                 <View style={styles.searchBox}>
                   <Ionicons name="search" size={18} color="#888" />
                   <TextInput
-                    placeholder="Buscar legenda..."
+                    placeholder="Buscar username..."
                     placeholderTextColor="#999"
                     style={styles.searchInput}
                     value={search}
@@ -268,69 +560,76 @@ export default function SeguidoresScreen() {
                   />
                 </View>
 
+                {activeFilter !== "todos" && (
+                  <TouchableOpacity
+                    style={styles.clearFilter}
+                    onPress={() => setActiveFilter("todos")}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={styles.clearFilterText}>
+                      Mostrar lista completa
+                    </Text>
+                  </TouchableOpacity>
+                )}
+
                 <View style={styles.filtersRow}>
                   <TouchableOpacity
                     style={[
                       styles.filterButton,
-                      activeFilter === "todos" && styles.filterButtonActive,
+                      activeTab === "followers" && styles.filterButtonActive,
                     ]}
-                    onPress={() => setActiveFilter("todos")}
+                    onPress={() => {
+                      setActiveTab("followers");
+                      setActiveFilter("todos");
+                    }}
                   >
                     <Text
                       style={[
                         styles.filterText,
-                        activeFilter === "todos" && styles.filterTextActive,
+                        activeTab === "followers" && styles.filterTextActive,
                       ]}
                     >
-                      Todos
+                      Seguidores
                     </Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity
                     style={[
                       styles.filterButton,
-                      activeFilter === "com_legenda" &&
-                        styles.filterButtonActive,
+                      activeTab === "following" && styles.filterButtonActive,
                     ]}
-                    onPress={() => setActiveFilter("com_legenda")}
+                    onPress={() => {
+                      setActiveTab("following");
+                      setActiveFilter("todos");
+                    }}
                   >
                     <Text
                       style={[
                         styles.filterText,
-                        activeFilter === "com_legenda" &&
-                          styles.filterTextActive,
+                        activeTab === "following" && styles.filterTextActive,
                       ]}
                     >
-                      Com legenda
-                    </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[
-                      styles.filterButton,
-                      activeFilter === "sem_legenda" &&
-                        styles.filterButtonActive,
-                    ]}
-                    onPress={() => setActiveFilter("sem_legenda")}
-                  >
-                    <Text
-                      style={[
-                        styles.filterText,
-                        activeFilter === "sem_legenda" &&
-                          styles.filterTextActive,
-                      ]}
-                    >
-                      Sem legenda
+                      Seguindo
                     </Text>
                   </TouchableOpacity>
                 </View>
+
+                <TouchableOpacity
+                  style={styles.importButton}
+                  onPress={() => router.push("/importar-seguidores")}
+                >
+                  <Text style={styles.importButtonText}>
+                    Importar nova lista
+                  </Text>
+                </TouchableOpacity>
               </>
             }
             ListEmptyComponent={
               <View style={styles.emptyBox}>
-                <Text style={styles.emptyTitle}>Nenhum post encontrado</Text>
+                <Text style={styles.emptyTitle}>Nenhuma lista encontrada</Text>
                 <Text style={styles.emptyText}>
-                  Tente outro filtro ou atualize a lista.
+                  Importe um arquivo de seguidores ou seguindo para visualizar
+                  aqui.
                 </Text>
               </View>
             }
@@ -342,14 +641,9 @@ export default function SeguidoresScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: "#F4F4F6",
-  },
+  screen: { flex: 1, backgroundColor: "#F4F4F6" },
 
-  header: {
-    paddingBottom: 22,
-  },
+  header: { paddingBottom: 22 },
 
   headerContent: {
     paddingTop: 10,
@@ -401,19 +695,82 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
 
-  headerIconText: {
-    fontSize: 28,
+  headerIconText: { fontSize: 28 },
+
+  headerAvatar: { width: "100%", height: "100%" },
+
+  content: { flex: 1, paddingHorizontal: 20, paddingTop: 18 },
+
+  infoWarning: {
+    backgroundColor: "#EFF6FF",
+    borderRadius: 18,
+    padding: 14,
+    marginBottom: 14,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    borderWidth: 1,
+    borderColor: "#BFDBFE",
   },
 
-  headerAvatar: {
-    width: "100%",
-    height: "100%",
-  },
-
-  content: {
+  infoWarningText: {
     flex: 1,
-    paddingHorizontal: 20,
-    paddingTop: 18,
+    marginLeft: 8,
+    fontSize: 13,
+    color: "#1E40AF",
+    lineHeight: 18,
+    fontWeight: "500",
+  },
+
+  updateCard: {
+    backgroundColor: "#FFF7ED",
+    borderRadius: 18,
+    padding: 14,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: "#F59E0B",
+  },
+
+  updateHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+
+  updateTitle: {
+    marginLeft: 8,
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#9A3412",
+  },
+
+  updateText: {
+    fontSize: 13,
+    color: "#9A3412",
+    lineHeight: 19,
+  },
+
+  updateDetails: {
+    marginTop: 8,
+    fontSize: 13,
+    color: "#7C2D12",
+    fontWeight: "700",
+    lineHeight: 19,
+  },
+
+  updateButton: {
+    marginTop: 12,
+    backgroundColor: "#fff",
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    alignSelf: "flex-start",
+    borderWidth: 1,
+    borderColor: "#F59E0B",
+  },
+
+  updateButtonText: {
+    color: "#B45309",
+    fontWeight: "700",
   },
 
   statsRow: {
@@ -441,37 +798,13 @@ const styles = StyleSheet.create({
     color: "#777",
     fontWeight: "600",
     marginBottom: 8,
+    textAlign: "center",
   },
 
   statValue: {
     fontSize: 20,
     fontWeight: "800",
     color: "#1E1E1E",
-  },
-
-  infoBox: {
-    backgroundColor: "#fff",
-    borderRadius: 20,
-    padding: 16,
-    marginBottom: 16,
-    shadowColor: "#000",
-    shadowOpacity: 0.04,
-    shadowOffset: { width: 0, height: 3 },
-    shadowRadius: 8,
-    elevation: 2,
-  },
-
-  infoTitle: {
-    fontSize: 15,
-    fontWeight: "800",
-    color: "#1E1E1E",
-    marginBottom: 8,
-  },
-
-  infoText: {
-    fontSize: 14,
-    color: "#666",
-    lineHeight: 22,
   },
 
   secondaryStatsRow: {
@@ -506,6 +839,20 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
 
+  cardActive: {
+    borderWidth: 2,
+    borderColor: "#d62976",
+    backgroundColor: "#FFF0F7",
+  },
+
+  cardActiveLabel: {
+    color: "#b81f65",
+  },
+
+  cardActiveValue: {
+    color: "#b81f65",
+  },
+
   searchBox: {
     backgroundColor: "#fff",
     borderRadius: 20,
@@ -528,9 +875,26 @@ const styles = StyleSheet.create({
     color: "#1E1E1E",
   },
 
+  clearFilter: {
+    alignSelf: "center",
+    backgroundColor: "#fff",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 18,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: "#d62976",
+  },
+
+  clearFilterText: {
+    color: "#d62976",
+    fontWeight: "700",
+    fontSize: 14,
+  },
+
   filtersRow: {
     flexDirection: "row",
-    marginBottom: 16,
+    marginBottom: 14,
     justifyContent: "space-between",
   },
 
@@ -560,16 +924,31 @@ const styles = StyleSheet.create({
     color: "#fff",
   },
 
-  listContent: {
-    paddingBottom: 20,
+  importButton: {
+    backgroundColor: "#fff",
+    borderRadius: 18,
+    paddingVertical: 14,
+    alignItems: "center",
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: "#E5E5E5",
   },
 
-  postCard: {
+  importButtonText: {
+    color: "#d62976",
+    fontSize: 15,
+    fontWeight: "800",
+  },
+
+  listContent: { paddingBottom: 20 },
+
+  userCard: {
     flexDirection: "row",
     backgroundColor: "#fff",
     padding: 14,
     borderRadius: 24,
     marginBottom: 12,
+    alignItems: "center",
     shadowColor: "#000",
     shadowOpacity: 0.05,
     shadowOffset: { width: 0, height: 4 },
@@ -577,79 +956,28 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
 
-  postImage: {
-    width: 82,
-    height: 82,
-    borderRadius: 18,
-    marginRight: 14,
-    backgroundColor: "#DDD",
-  },
-
-  postInfo: {
-    flex: 1,
+  userAvatar: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: "#FCE7F1",
+    alignItems: "center",
     justifyContent: "center",
+    marginRight: 14,
   },
 
-  postType: {
+  userAvatarText: {
+    color: "#d62976",
+    fontWeight: "800",
+    fontSize: 18,
+  },
+
+  userInfo: { flex: 1 },
+
+  userName: {
     fontSize: 15,
     fontWeight: "800",
     color: "#111",
-    marginBottom: 4,
-  },
-
-  postDate: {
-    fontSize: 12,
-    color: "#666",
-    marginBottom: 8,
-  },
-
-  caption: {
-    fontSize: 13,
-    color: "#444",
-    marginBottom: 10,
-    lineHeight: 18,
-  },
-
-  statusRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-  },
-
-  statusBadge: {
-    paddingVertical: 7,
-    paddingHorizontal: 12,
-    borderRadius: 16,
-    marginRight: 8,
-    marginBottom: 6,
-  },
-
-  greenBadge: {
-    backgroundColor: "#E8F7EC",
-  },
-
-  redBadge: {
-    backgroundColor: "#FDECEC",
-  },
-
-  newBadge: {
-    backgroundColor: "#EEF0FF",
-  },
-
-  statusText: {
-    fontSize: 12,
-    fontWeight: "700",
-  },
-
-  greenText: {
-    color: "#1D8F4D",
-  },
-
-  redText: {
-    color: "#D34B4B",
-  },
-
-  newText: {
-    color: "#4F5BD5",
   },
 
   center: {
