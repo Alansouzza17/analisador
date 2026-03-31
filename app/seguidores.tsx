@@ -43,6 +43,7 @@ const FOLLOWING_STORAGE_KEY = "@following_importados";
 const PREVIOUS_FOLLOWERS_STORAGE_KEY = "@followers_importados_anterior";
 const LAST_API_FOLLOWERS_COUNT_KEY = "@last_api_followers_count";
 const LAST_API_FOLLOWING_COUNT_KEY = "@last_api_following_count";
+const FOLLOWERS_COMPARISON_READY_KEY = "@followers_comparison_ready";
 
 export default function SeguidoresScreen() {
   const router = useRouter();
@@ -54,6 +55,7 @@ export default function SeguidoresScreen() {
   const [lastApiFollowers, setLastApiFollowers] = useState<number | null>(null);
   const [lastApiFollowing, setLastApiFollowing] = useState<number | null>(null);
   const [apiReferenceLoaded, setApiReferenceLoaded] = useState(false);
+  const [comparisonReady, setComparisonReady] = useState(false);
 
   const [initialLoading, setInitialLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -80,6 +82,7 @@ export default function SeguidoresScreen() {
         savedPreviousFollowers,
         savedLastFollowers,
         savedLastFollowing,
+        savedComparisonReady,
       ] = await Promise.all([
         fetch(`${API_URL}/me/instagram/profile`),
         AsyncStorage.getItem(FOLLOWERS_STORAGE_KEY),
@@ -87,6 +90,7 @@ export default function SeguidoresScreen() {
         AsyncStorage.getItem(PREVIOUS_FOLLOWERS_STORAGE_KEY),
         AsyncStorage.getItem(LAST_API_FOLLOWERS_COUNT_KEY),
         AsyncStorage.getItem(LAST_API_FOLLOWING_COUNT_KEY),
+        AsyncStorage.getItem(FOLLOWERS_COMPARISON_READY_KEY),
       ]);
 
       const profileData = await profileResponse.json();
@@ -101,6 +105,7 @@ export default function SeguidoresScreen() {
       setPreviousFollowers(
         savedPreviousFollowers ? JSON.parse(savedPreviousFollowers) : []
       );
+      setComparisonReady(savedComparisonReady === "true");
 
       const parsedLastFollowers = savedLastFollowers
         ? Number(savedLastFollowers)
@@ -165,26 +170,6 @@ export default function SeguidoresScreen() {
     );
   }, [followers, following]);
 
-  const quemDeixouDeSeguir = useMemo(() => {
-    const currentFollowersSet = new Set(
-      followers.map((item) => item.username.toLowerCase())
-    );
-
-    return previousFollowers.filter(
-      (item) => !currentFollowersSet.has(item.username.toLowerCase())
-    );
-  }, [previousFollowers, followers]);
-
-  const novosSeguidores = useMemo(() => {
-    const previousFollowersSet = new Set(
-      previousFollowers.map((item) => item.username.toLowerCase())
-    );
-
-    return followers.filter(
-      (item) => !previousFollowersSet.has(item.username.toLowerCase())
-    );
-  }, [previousFollowers, followers]);
-
   const followersChanged = useMemo(() => {
     if (!apiReferenceLoaded || !profile || lastApiFollowers === null) {
       return false;
@@ -226,6 +211,38 @@ export default function SeguidoresScreen() {
     lastApiFollowers,
     lastApiFollowing,
   ]);
+
+  const canCompareFollowersChange = useMemo(() => {
+    if (!comparisonReady) return false;
+    if (previousFollowers.length === 0) return false;
+    if (followers.length === 0) return false;
+
+    return true;
+  }, [comparisonReady, previousFollowers.length, followers.length]);
+
+  const quemDeixouDeSeguir = useMemo(() => {
+    if (!canCompareFollowersChange) return [];
+
+    const currentFollowersSet = new Set(
+      followers.map((item) => item.username.toLowerCase())
+    );
+
+    return previousFollowers.filter(
+      (item) => !currentFollowersSet.has(item.username.toLowerCase())
+    );
+  }, [canCompareFollowersChange, previousFollowers, followers]);
+
+  const novosSeguidores = useMemo(() => {
+    if (!canCompareFollowersChange) return [];
+
+    const previousFollowersSet = new Set(
+      previousFollowers.map((item) => item.username.toLowerCase())
+    );
+
+    return followers.filter(
+      (item) => !previousFollowersSet.has(item.username.toLowerCase())
+    );
+  }, [canCompareFollowersChange, previousFollowers, followers]);
 
   const currentList = useMemo(() => {
     if (activeFilter === "nao_segue") {
