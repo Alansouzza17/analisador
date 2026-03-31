@@ -1,9 +1,12 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { LinearGradient } from "expo-linear-gradient";
+import * as Linking from "expo-linking";
 import { useRouter } from "expo-router";
+import * as WebBrowser from "expo-web-browser";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Image,
   KeyboardAvoidingView,
   Platform,
@@ -15,8 +18,13 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { API_URL } from "../services/api";
+
+WebBrowser.maybeCompleteAuthSession();
 
 const USER_STORAGE_KEY = "@user_name";
+const SESSION_STORAGE_KEY = "@instagram_session_id";
+const REDIRECT_URI = "analisador://instagram-auth";
 
 export default function Login() {
   const router = useRouter();
@@ -27,13 +35,32 @@ export default function Login() {
 
   useEffect(() => {
     verificarLogin();
+
+    const subscription = Linking.addEventListener("url", ({ url }) => {
+      handleDeepLink(url);
+    });
+
+    Linking.getInitialURL().then((url) => {
+      if (url) {
+        handleDeepLink(url);
+      }
+    });
+
+    return () => subscription.remove();
   }, []);
 
   async function verificarLogin() {
     try {
-      const savedName = await AsyncStorage.getItem(USER_STORAGE_KEY);
+      const [savedName, savedSessionId] = await Promise.all([
+        AsyncStorage.getItem(USER_STORAGE_KEY),
+        AsyncStorage.getItem(SESSION_STORAGE_KEY),
+      ]);
 
       if (savedName) {
+        setNome(savedName);
+      }
+
+      if (savedName && savedSessionId) {
         router.replace("/home");
       }
     } catch (error) {
@@ -43,12 +70,46 @@ export default function Login() {
     }
   }
 
+  async function handleDeepLink(url: string) {
+    try {
+      const parsed = Linking.parse(url);
+      const success = parsed.queryParams?.success;
+      const sessionId = parsed.queryParams?.session_id;
+      const error = parsed.queryParams?.error;
+
+      if (success === "true" && typeof sessionId === "string") {
+        const nomeSalvo = nome.trim() || "Instagram";
+
+        await AsyncStorage.multiSet([
+          [USER_STORAGE_KEY, nomeSalvo],
+          [SESSION_STORAGE_KEY, sessionId],
+        ]);
+
+        setSubmitting(false);
+        router.replace("/home");
+        return;
+      }
+
+      if (success === "false") {
+        setSubmitting(false);
+        Alert.alert(
+          "Erro",
+          String(error || "Não foi possível conectar com o Instagram")
+        );
+      }
+    } catch (error) {
+      console.log("Erro ao tratar deep link:", error);
+      setSubmitting(false);
+    }
+  }
+
   async function handleEntrar() {
     if (!nome.trim()) return;
 
     try {
       setSubmitting(true);
       await AsyncStorage.setItem(USER_STORAGE_KEY, nome.trim());
+      await AsyncStorage.removeItem(SESSION_STORAGE_KEY);
       router.replace("/home");
     } catch (error) {
       console.log("Erro ao salvar usuário:", error);
@@ -61,13 +122,27 @@ export default function Login() {
     try {
       setSubmitting(true);
 
-      const nomeSalvo = nome.trim() || "Alan";
-      await AsyncStorage.setItem(USER_STORAGE_KEY, nomeSalvo);
+      const response = await fetch(`${API_URL}/auth/app/instagram/login`);
+      const data = await response.json();
 
-      router.replace("/home");
-    } catch (error) {
+      if (!response.ok || !data?.authUrl) {
+        throw new Error(data?.error || "Falha ao iniciar login com Instagram");
+      }
+
+      const result = await WebBrowser.openAuthSessionAsync(
+        data.authUrl,
+        REDIRECT_URI
+      );
+
+      if (result.type === "cancel") {
+        setSubmitting(false);
+      }
+    } catch (error: any) {
       console.log("Erro ao entrar com Instagram:", error);
-    } finally {
+      Alert.alert(
+        "Erro",
+        error?.message || "Não foi possível conectar com o Instagram"
+      );
       setSubmitting(false);
     }
   }

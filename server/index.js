@@ -624,6 +624,61 @@ app.get("/me/instagram/media", async (req, res) => {
   }
 });
 
+/* ===========================================================
+   LOGIN INSTAGRAM APP
+=========================================================== */
+
+app.get("/auth/app/instagram/login", (req, res) => {
+  try {
+    const redirectUri = encodeURIComponent(
+      `${BASE_URL}/auth/app/instagram/callback`
+    );
+
+    const url =
+      `https://www.facebook.com/v23.0/dialog/oauth` +
+      `?client_id=${process.env.META_APP_ID}` +
+      `&redirect_uri=${redirectUri}` +
+      `&scope=public_profile,pages_show_list,instagram_basic,business_management` +
+      `&response_type=code`;
+
+    return res.json({
+      authUrl: url,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      error: "Erro ao gerar login Instagram",
+    });
+  }
+});
+
+
+app.get("/auth/app/instagram/callback", async (req, res) => {
+  try {
+    const { code } = req.query;
+
+    if (!code) {
+      return res.status(400).send("Código não recebido");
+    }
+
+    const redirectUri = `${BASE_URL}/auth/app/instagram/callback`;
+
+    const tokenUrl =
+      `https://graph.facebook.com/v23.0/oauth/access_token` +
+      `?client_id=${process.env.META_APP_ID}` +
+      `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+      `&client_secret=${process.env.META_APP_SECRET}` +
+      `&code=${code}`;
+
+    const response = await fetch(tokenUrl);
+    const data = await response.json();
+
+    return res.send("Login realizado com sucesso. Pode voltar para o app.");
+  } catch (error) {
+    console.error("Erro login app:", error);
+    res.status(500).send("Erro login Instagram");
+  }
+});
+
 app.listen(PORT, HOST, () => {
   console.log(`Servidor rodando em ${BASE_URL}`);
 });

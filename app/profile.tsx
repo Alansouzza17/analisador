@@ -1,3 +1,4 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
@@ -30,6 +31,8 @@ type InstagramMedia = {
   timestamp: string;
 };
 
+const SESSION_STORAGE_KEY = "@instagram_session_id";
+
 export default function Profile() {
   const router = useRouter();
 
@@ -41,9 +44,19 @@ export default function Profile() {
     try {
       setLoading(true);
 
+      const sessionId = await AsyncStorage.getItem(SESSION_STORAGE_KEY);
+
+      if (!sessionId) {
+        throw new Error("Nenhuma sessão do Instagram encontrada");
+      }
+
       const [profileResponse, postsResponse] = await Promise.all([
-        fetch(`${API_URL}/me/instagram/profile`),
-        fetch(`${API_URL}/me/instagram/media`),
+        fetch(
+          `${API_URL}/me/instagram/profile?session_id=${encodeURIComponent(sessionId)}`
+        ),
+        fetch(
+          `${API_URL}/me/instagram/media?session_id=${encodeURIComponent(sessionId)}`
+        ),
       ]);
 
       const profileData = await profileResponse.json();
@@ -58,7 +71,7 @@ export default function Profile() {
       }
 
       setProfile(profileData);
-      setPosts(postsData?.data || []);
+      setPosts(Array.isArray(postsData?.data) ? postsData.data : []);
     } catch (error: any) {
       Alert.alert("Erro", error?.message || "Não foi possível carregar os dados");
     } finally {

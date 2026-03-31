@@ -27,6 +27,7 @@ type InstagramProfile = {
 };
 
 const USER_STORAGE_KEY = "@user_name";
+const SESSION_STORAGE_KEY = "@instagram_session_id";
 
 export default function Home() {
   const router = useRouter();
@@ -43,14 +44,23 @@ export default function Home() {
     try {
       setLoading(true);
 
-      const [savedName, response] = await Promise.all([
+      const [savedName, sessionId] = await Promise.all([
         AsyncStorage.getItem(USER_STORAGE_KEY),
-        fetch(`${API_URL}/me/instagram/profile`),
+        AsyncStorage.getItem(SESSION_STORAGE_KEY),
       ]);
 
       if (savedName) {
         setUserName(savedName);
       }
+
+      if (!sessionId) {
+        setProfile(null);
+        return;
+      }
+
+      const response = await fetch(
+        `${API_URL}/me/instagram/profile?session_id=${encodeURIComponent(sessionId)}`
+      );
 
       const data = await response.json();
 
@@ -69,7 +79,19 @@ export default function Home() {
 
   async function sair() {
     try {
-      await AsyncStorage.removeItem(USER_STORAGE_KEY);
+      const sessionId = await AsyncStorage.getItem(SESSION_STORAGE_KEY);
+
+      if (sessionId) {
+        await fetch(`${API_URL}/auth/app/logout`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ session_id: sessionId }),
+        });
+      }
+
+      await AsyncStorage.multiRemove([USER_STORAGE_KEY, SESSION_STORAGE_KEY]);
       router.replace("/");
     } catch (error) {
       console.log("Erro ao sair:", error);
@@ -232,30 +254,30 @@ export default function Home() {
             </TouchableOpacity>
 
             <TouchableOpacity
-  style={styles.actionCard}
-  onPress={() => router.push("/metricas")}
->
-  <View style={styles.actionIconBox}>
-    <Ionicons name="stats-chart-outline" size={24} color="#d62976" />
-  </View>
-  <Text style={styles.actionTitle}>Métricas</Text>
-  <Text style={styles.actionSubtitle}>
-    Veja score, frequência e desempenho
-  </Text>
-</TouchableOpacity>
+              style={styles.actionCard}
+              onPress={() => router.push("/metricas")}
+            >
+              <View style={styles.actionIconBox}>
+                <Ionicons name="stats-chart-outline" size={24} color="#d62976" />
+              </View>
+              <Text style={styles.actionTitle}>Métricas</Text>
+              <Text style={styles.actionSubtitle}>
+                Veja score, frequência e desempenho
+              </Text>
+            </TouchableOpacity>
 
-        <TouchableOpacity
-  style={styles.actionCard}
-  onPress={() => router.push("/importar-seguidores")}
->
-  <View style={styles.actionIconBox}>
-    <Ionicons name="document-attach-outline" size={24} color="#d62976" />
-  </View>
-  <Text style={styles.actionTitle}>Importar</Text>
-  <Text style={styles.actionSubtitle}>
-    Adicione um arquivo manual de seguidores
-  </Text>
-</TouchableOpacity>
+            <TouchableOpacity
+              style={styles.actionCard}
+              onPress={() => router.push("/importar-seguidores")}
+            >
+              <View style={styles.actionIconBox}>
+                <Ionicons name="document-attach-outline" size={24} color="#d62976" />
+              </View>
+              <Text style={styles.actionTitle}>Importar</Text>
+              <Text style={styles.actionSubtitle}>
+                Adicione um arquivo manual de seguidores
+              </Text>
+            </TouchableOpacity>
           </View>
 
           <TouchableOpacity style={styles.logoutButton} onPress={sair}>
