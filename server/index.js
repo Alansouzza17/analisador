@@ -503,16 +503,16 @@ app.get("/auth/app/instagram/login", (req, res) => {
     );
 
     const url =
-      `https://www.facebook.com/v23.0/dialog/oauth` +
+      `https://api.instagram.com/oauth/authorize` +
       `?client_id=${process.env.INSTAGRAM_CLIENT_ID}` +
       `&redirect_uri=${redirectUri}` +
-      `&scope=pages_show_list,instagram_basic,business_management` +
+      `&scope=instagram_business_basic,instagram_business_manage_messages,instagram_business_manage_comments` +
       `&response_type=code`;
 
     return res.json({ authUrl: url });
   } catch (error) {
     return res.status(500).json({
-      error: "Erro ao gerar login do Instagram",
+      error: "Erro ao gerar login Instagram",
       detalhes: error.message,
     });
   }
