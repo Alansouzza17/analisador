@@ -1,5 +1,7 @@
 import { API_URL } from "@/services/api";
+import { getActiveSessionId } from "@/services/session";
 import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
@@ -49,15 +51,33 @@ export default function Metricas() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
+  const SESSION_STORAGE_KEY = "@instagram_session_id";
+
+  async function getSessionId() {
+    return await getActiveSessionId();
+  }
+
   useEffect(() => {
     carregarDados();
   }, []);
 
   async function carregarDados() {
     try {
+      const sessionId = await getSessionId();
+
+      if (!sessionId) {
+        throw new Error("Sessão não encontrada");
+      }
+
       const [profileResponse, analysisResponse] = await Promise.all([
-        fetch(`${API_URL}/me/instagram/profile`),
-        fetch(`${API_URL}/ia/analyze`),
+        fetch(
+          `${API_URL}/me/instagram/profile?session_id=${encodeURIComponent(
+            sessionId
+          )}`
+        ),
+        fetch(
+          `${API_URL}/ia/analyze?session_id=${encodeURIComponent(sessionId)}`
+        ),
       ]);
 
       const profileData = await profileResponse.json();
@@ -74,7 +94,10 @@ export default function Metricas() {
       setProfile(profileData);
       setAnalysis(analysisData);
     } catch (error: any) {
-      Alert.alert("Erro", error?.message || "Não foi possível carregar as métricas");
+      Alert.alert(
+        "Erro",
+        error?.message || "Não foi possível carregar as métricas"
+      );
     } finally {
       setLoading(false);
       setRefreshing(false);

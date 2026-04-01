@@ -1,4 +1,5 @@
 import { API_URL } from "@/services/api";
+import { getActiveSessionId } from "@/services/session";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as DocumentPicker from "expo-document-picker";
 import { LinearGradient } from "expo-linear-gradient";
@@ -23,6 +24,7 @@ const PREVIOUS_FOLLOWERS_STORAGE_KEY = "@followers_importados_anterior";
 const LAST_API_FOLLOWERS_COUNT_KEY = "@last_api_followers_count";
 const LAST_API_FOLLOWING_COUNT_KEY = "@last_api_following_count";
 const FOLLOWERS_COMPARISON_READY_KEY = "@followers_comparison_ready";
+const UPDATE_WARNING_READY_KEY = "@update_warning_ready";
 
 export default function ImportarSeguidores() {
   const router = useRouter();
@@ -214,21 +216,25 @@ export default function ImportarSeguidores() {
     }
 
     try {
-      const response = await fetch(
-        `${API_URL}/me/instagram/profile`
-      );
+      const sessionId = await getActiveSessionId();
+
+      const profileFetchUrl = sessionId
+        ? `${API_URL}/me/instagram/profile?session_id=${encodeURIComponent(sessionId)}`
+        : `${API_URL}/me/instagram/profile`;
+
+      const response = await fetch(profileFetchUrl);
+
+      if (!response.ok) {
+        throw new Error("Erro ao buscar perfil após importação");
+      }
 
       const profile = await response.json();
 
-      await AsyncStorage.setItem(
-        LAST_API_FOLLOWERS_COUNT_KEY,
-        String(profile.followers_count)
-      );
-
-      await AsyncStorage.setItem(
-        LAST_API_FOLLOWING_COUNT_KEY,
-        String(profile.follows_count)
-      );
+      await AsyncStorage.multiSet([
+        [LAST_API_FOLLOWERS_COUNT_KEY, String(profile.followers_count)],
+        [LAST_API_FOLLOWING_COUNT_KEY, String(profile.follows_count)],
+        [UPDATE_WARNING_READY_KEY, "true"],
+      ]);
     } catch (error) {
       console.log(error);
     }

@@ -13,6 +13,7 @@ import {
   View,
 } from "react-native";
 import { API_URL } from "../services/api";
+import { getActiveSessionId } from "../services/session";
 
 type InstagramProfile = {
   id: string;
@@ -44,7 +45,7 @@ export default function Profile() {
     try {
       setLoading(true);
 
-      const sessionId = await AsyncStorage.getItem(SESSION_STORAGE_KEY);
+      const sessionId = await getActiveSessionId();
 
       if (!sessionId) {
         throw new Error("Nenhuma sessão do Instagram encontrada");

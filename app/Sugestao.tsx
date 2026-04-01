@@ -1,4 +1,5 @@
 import { API_URL } from "@/services/api";
+import { getActiveSessionId } from "@/services/session";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Clipboard from "expo-clipboard";
@@ -37,8 +38,7 @@ export default function Sugestao() {
   const [result, setResult] = useState<AIResult | null>(null);
 
   async function getSessionId() {
-  const sessionId = await AsyncStorage.getItem(SESSION_STORAGE_KEY);;
-  return sessionId;
+  return await getActiveSessionId();
 }
 
   async function pickImage() {

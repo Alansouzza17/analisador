@@ -1,5 +1,6 @@
 import ExpandableText from "@/components/ExpandableText";
 import { API_URL } from "@/services/api";
+import { getActiveSessionId } from "@/services/session";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Clipboard from "expo-clipboard";
@@ -7,15 +8,15 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    Image,
-    ScrollView,
-    StatusBar,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  Image,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -63,8 +64,7 @@ export default function Analysis() {
   }, []);
 
   async function getSessionId() {
-  const sessionId = await AsyncStorage.getItem("@instagram_session_id");
-  return sessionId;
+  return await getActiveSessionId();
 }
 
   async function carregarUltimaAnalise() {

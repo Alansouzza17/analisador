@@ -1,4 +1,5 @@
 import { API_URL } from "@/services/api";
+import { getActiveSessionId } from "@/services/session";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { LinearGradient } from "expo-linear-gradient";
@@ -44,6 +45,7 @@ const PREVIOUS_FOLLOWERS_STORAGE_KEY = "@followers_importados_anterior";
 const LAST_API_FOLLOWERS_COUNT_KEY = "@last_api_followers_count";
 const LAST_API_FOLLOWING_COUNT_KEY = "@last_api_following_count";
 const FOLLOWERS_COMPARISON_READY_KEY = "@followers_comparison_ready";
+const UPDATE_WARNING_READY_KEY = "@update_warning_ready";
 const SESSION_STORAGE_KEY = "@instagram_session_id";
 
 export default function SeguidoresScreen() {
@@ -63,6 +65,7 @@ export default function SeguidoresScreen() {
   const [search, setSearch] = useState("");
   const [activeTab, setActiveTab] = useState<TabType>("followers");
   const [activeFilter, setActiveFilter] = useState<FilterType>("todos");
+  const [updateWarningReady, setUpdateWarningReady] = useState(false);
 
   useEffect(() => {
     carregarDados();
@@ -75,13 +78,16 @@ export default function SeguidoresScreen() {
   );
 
   async function getSessionId() {
-  const sessionId = await AsyncStorage.getItem(SESSION_STORAGE_KEY);
-  return sessionId;
+  return await getActiveSessionId();
 }
   
  async function carregarDados() {
   try {
     const sessionId = await getSessionId();
+
+    if (!sessionId) {
+      throw new Error("Sessão não encontrada");
+    }
 
     const [
       profileResponse,
@@ -91,9 +97,10 @@ export default function SeguidoresScreen() {
       savedLastFollowers,
       savedLastFollowing,
       savedComparisonReady,
+      savedUpdateWarningReady,
     ] = await Promise.all([
       fetch(
-        `${API_URL}/me/instagram/profile?session_id=${sessionId}`
+        `${API_URL}/me/instagram/profile?session_id=${encodeURIComponent(sessionId)}`
       ),
       AsyncStorage.getItem(FOLLOWERS_STORAGE_KEY),
       AsyncStorage.getItem(FOLLOWING_STORAGE_KEY),
@@ -101,6 +108,7 @@ export default function SeguidoresScreen() {
       AsyncStorage.getItem(LAST_API_FOLLOWERS_COUNT_KEY),
       AsyncStorage.getItem(LAST_API_FOLLOWING_COUNT_KEY),
       AsyncStorage.getItem(FOLLOWERS_COMPARISON_READY_KEY),
+      AsyncStorage.getItem(UPDATE_WARNING_READY_KEY),
     ]);
 
     const profileData = await profileResponse.json();
@@ -128,6 +136,7 @@ export default function SeguidoresScreen() {
     setLastApiFollowers(parsedLastFollowers);
     setLastApiFollowing(parsedLastFollowing);
     setApiReferenceLoaded(true);
+    setUpdateWarningReady(savedUpdateWarningReady === "true");
 
   } catch (error) {
     console.warn("Erro ao carregar tela seguidores:", error);
@@ -178,7 +187,12 @@ export default function SeguidoresScreen() {
     return profile.follows_count !== lastApiFollowing;
   }, [apiReferenceLoaded, profile, lastApiFollowing]);
 
-  const showUpdateMessage = followersChanged || followingChanged;
+  const hasImportedLists = followers.length > 0 || following.length > 0;
+
+  const showUpdateMessage =
+    updateWarningReady &&
+    hasImportedLists &&
+    (followersChanged || followingChanged);
 
   const updateMessage = useMemo(() => {
     const parts: string[] = [];

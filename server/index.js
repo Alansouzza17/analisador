@@ -624,7 +624,11 @@ app.get("/auth/app/instagram/callback", async (req, res) => {
     };
 
     return res.redirect(
-      `${redirectBack}?success=true&session_id=${encodeURIComponent(sessionId)}`
+      `${redirectBack}?success=true` +
+        `&session_id=${encodeURIComponent(sessionId)}` +
+        `&user_id=${encodeURIComponent(profileData.id || "")}` +
+        `&username=${encodeURIComponent(profileData.username || "")}` +
+        `&profile_picture_url=${encodeURIComponent(profileData.profile_picture_url || "")}`
     );
   } catch (error) {
     console.error("Erro login:", error);
