@@ -10,7 +10,6 @@ import {
   Image,
   KeyboardAvoidingView,
   Platform,
-  SafeAreaView,
   StatusBar,
   StyleSheet,
   Text,
@@ -18,13 +17,14 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { API_URL } from "../services/api";
 
 WebBrowser.maybeCompleteAuthSession();
 
 const USER_STORAGE_KEY = "@user_name";
 const SESSION_STORAGE_KEY = "@instagram_session_id";
-const REDIRECT_URI = "analisador://instagram-auth";
+const REDIRECT_URI = Linking.createURL("instagram-auth");
 
 export default function Login() {
   const router = useRouter();
@@ -119,49 +119,43 @@ export default function Login() {
   }
 
   async function handleEntrarInstagram() {
-    try {
-      setSubmitting(true);
+  try {
+    setSubmitting(true);
 
-      const response = await fetch(`${API_URL}/auth/app/instagram/login`);
-      const data = await response.json();
-
-      if (!response.ok || !data?.authUrl) {
-        throw new Error(data?.error || "Falha ao iniciar login com Instagram");
-      }
-
-      const result = await WebBrowser.openAuthSessionAsync(
-        data.authUrl,
-        REDIRECT_URI
-      );
-
-      if (result.type === "cancel") {
-        setSubmitting(false);
-      }
-    } catch (error: any) {
-      console.log("Erro ao entrar com Instagram:", error);
-      Alert.alert(
-        "Erro",
-        error?.message || "Não foi possível conectar com o Instagram"
-      );
-      setSubmitting(false);
-    }
-  }
-
-  if (loading) {
-    return (
-      <LinearGradient
-        colors={["#feda75", "#fa7e1e", "#d62976", "#962fbf", "#4f5bd5"]}
-        style={styles.screen}
-      >
-        <SafeAreaView style={styles.safe}>
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#fff" />
-            <Text style={styles.loadingText}>Carregando...</Text>
-          </View>
-        </SafeAreaView>
-      </LinearGradient>
+    const response = await fetch(
+      `${API_URL}/auth/app/instagram/login`
     );
+
+    const data = await response.json();
+
+    if (!response.ok || !data?.authUrl) {
+      throw new Error(
+        data?.error || "Falha ao iniciar login com Instagram"
+      );
+    }
+
+    const result = await WebBrowser.openAuthSessionAsync(
+      data.authUrl,
+      REDIRECT_URI
+    );
+
+    if (result.type === "cancel") {
+      setSubmitting(false);
+      return;
+    }
+
+  } catch (error: any) {
+    console.log("Erro ao entrar com Instagram:", error);
+
+    Alert.alert(
+      "Erro",
+      error?.message ||
+        "Não foi possível conectar com o Instagram"
+    );
+
+    setSubmitting(false);
   }
+}
 
   return (
     <LinearGradient
