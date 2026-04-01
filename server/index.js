@@ -1,6 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 import bodyParser from "body-parser";
 import cors from "cors";
+import crypto from "crypto";
 import "dotenv/config";
 import express from "express";
 import fetch from "node-fetch";
@@ -9,6 +10,7 @@ const PORT = process.env.PORT || 3333;
 const HOST = "0.0.0.0";
 const BASE_URL =
   process.env.BASE_URL || "https://analisador-api.onrender.com";
+const APP_DEEP_LINK = process.env.APP_DEEP_LINK || "analisador://instagram-auth";
 
 const app = express();
 
@@ -18,6 +20,12 @@ app.use(bodyParser.json({ limit: "20mb" }));
 const ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY,
 });
+
+/* ===========================================================
+   SESSÕES
+=========================================================== */
+
+const sessions = new Map();
 
 /* ===========================================================
    HELPERS
@@ -140,9 +148,31 @@ function buildMetrics(posts = []) {
 
 function getAccessTokenFromReq(req) {
   const queryToken = req.query.access_token?.trim();
-  const headerToken = req.headers.authorization?.replace(/^Bearer\s+/i, "").trim();
+  const headerToken = req.headers.authorization
+    ?.replace(/^Bearer\s+/i, "")
+    .trim();
 
   return headerToken || queryToken || null;
+}
+
+function getSessionIdFromReq(req) {
+  const querySession = typeof req.query.session_id === "string"
+    ? req.query.session_id.trim()
+    : null;
+
+  const headerSession = req.headers["x-session-id"];
+  const normalizedHeaderSession =
+    typeof headerSession === "string" ? headerSession.trim() : null;
+
+  return querySession || normalizedHeaderSession || null;
+}
+
+function ensureSession(sessionId) {
+  if (!sessionId || !sessions.has(sessionId)) {
+    throw new Error("Sessão inválida ou expirada");
+  }
+
+  return sessions.get(sessionId);
 }
 
 async function fetchJson(url, options = {}) {
@@ -161,7 +191,12 @@ async function fetchJson(url, options = {}) {
   }
 
   if (!response.ok) {
-    throw new Error(data?.error?.message || "Erro na API externa");
+    throw new Error(
+      data?.error?.message ||
+        data?.error_message ||
+        data?.error_type ||
+        "Erro na API externa"
+    );
   }
 
   return data;
@@ -380,7 +415,7 @@ Regras:
 });
 
 /* ===========================================================
-   META / FACEBOOK LOGIN
+   META / FACEBOOK LOGIN (LEGADO)
 =========================================================== */
 
 app.get("/auth/meta", (req, res) => {
@@ -420,19 +455,8 @@ app.get("/auth/meta/callback", async (req, res) => {
         <body style="font-family: Arial; text-align: center; padding: 40px;">
           <h2>Login realizado com sucesso</h2>
           <p>Você já pode voltar para o app.</p>
-          <p style="color:#666;font-size:14px;">
-            Token gerado com sucesso no backend.
-          </p>
           <pre style="text-align:left; display:inline-block; max-width:800px; white-space:pre-wrap;">
-${JSON.stringify(
-  {
-    token_type: tokenData.token_type,
-    expires_in: tokenData.expires_in,
-    access_token: tokenData.access_token,
-  },
-  null,
-  2
-)}
+${JSON.stringify(tokenData, null, 2)}
           </pre>
         </body>
       </html>
@@ -468,162 +492,6 @@ app.get("/auth/meta/test-user", async (req, res) => {
   }
 });
 
-app.get("/auth/meta/pages", async (req, res) => {
-  try {
-    const accessToken = getAccessTokenFromReq(req);
-
-    if (!accessToken) {
-      return res.status(400).json({ error: "access_token é obrigatório" });
-    }
-
-    const data = await fetchJson(
-      `https://graph.facebook.com/v23.0/me/accounts?access_token=${encodeURIComponent(accessToken)}`
-    );
-
-    return res.json(data);
-  } catch (error) {
-    console.error("Erro ao buscar páginas:", error);
-    return res.status(500).json({
-      error: "Erro ao buscar páginas",
-      detalhes: error.message,
-    });
-  }
-});
-
-app.get("/auth/meta/instagram-account", async (req, res) => {
-  try {
-    const pageId = req.query.page_id;
-    const accessToken = getAccessTokenFromReq(req);
-
-    if (!pageId || !accessToken) {
-      return res.status(400).json({
-        error: "page_id e access_token são obrigatórios",
-      });
-    }
-
-    const data = await fetchJson(
-      `https://graph.facebook.com/v23.0/${pageId}?fields=instagram_business_account&access_token=${encodeURIComponent(accessToken)}`
-    );
-
-    return res.json(data);
-  } catch (error) {
-    console.error("Erro ao buscar conta do Instagram:", error);
-    return res.status(500).json({
-      error: "Erro ao buscar conta do Instagram",
-      detalhes: error.message,
-    });
-  }
-});
-
-app.get("/auth/meta/instagram-profile", async (req, res) => {
-  try {
-    const igUserId = req.query.ig_user_id;
-    const accessToken = getAccessTokenFromReq(req);
-
-    if (!igUserId || !accessToken) {
-      return res.status(400).json({
-        error: "ig_user_id e access_token são obrigatórios",
-      });
-    }
-
-    const data = await fetchJson(
-      `https://graph.facebook.com/v23.0/${igUserId}?fields=id,username,profile_picture_url,followers_count,follows_count,media_count&access_token=${encodeURIComponent(accessToken)}`
-    );
-
-    return res.json(data);
-  } catch (error) {
-    console.error("Erro ao buscar perfil do Instagram:", error);
-    return res.status(500).json({
-      error: "Erro ao buscar perfil do Instagram",
-      detalhes: error.message,
-    });
-  }
-});
-
-app.get("/auth/meta/instagram-media", async (req, res) => {
-  try {
-    const igUserId = req.query.ig_user_id;
-    const accessToken = getAccessTokenFromReq(req);
-
-    if (!igUserId || !accessToken) {
-      return res.status(400).json({
-        error: "ig_user_id e access_token são obrigatórios",
-      });
-    }
-
-    const data = await fetchJson(
-      `https://graph.facebook.com/v23.0/${igUserId}/media?fields=id,caption,media_type,media_url,timestamp&access_token=${encodeURIComponent(accessToken)}`
-    );
-
-    return res.json(data);
-  } catch (error) {
-    console.error("Erro ao buscar mídia do Instagram:", error);
-    return res.status(500).json({
-      error: "Erro ao buscar mídia do Instagram",
-      detalhes: error.message,
-    });
-  }
-});
-
-  /* ===========================================================
-   ROTAS INTERNAS - INSTAGRAM DO USUÁRIO LOGADO
-=========================================================== */
-
-app.get("/me/instagram/profile", async (req, res) => {
-  try {
-    const accessToken = process.env.META_TEST_TOKEN;
-    const igUserId = process.env.META_TEST_IG_USER_ID;
-
-    if (!accessToken || !igUserId) {
-      return res.status(400).json({
-        error: "META_TEST_TOKEN ou META_TEST_IG_USER_ID não configurados",
-      });
-    }
-
-    const response = await fetch(
-      `https://graph.facebook.com/v23.0/${igUserId}?fields=id,username,profile_picture_url,followers_count,follows_count,media_count&access_token=${encodeURIComponent(accessToken)}`
-    );
-
-    const data = await response.json();
-
-    return res.status(response.ok ? 200 : 400).json(data);
-  } catch (error) {
-    console.error("Erro /me/instagram/profile:", error);
-
-    return res.status(500).json({
-      error: "Erro ao buscar perfil Instagram",
-    });
-  }
-});
-
-
-app.get("/me/instagram/media", async (req, res) => {
-  try {
-    const accessToken = process.env.META_TEST_TOKEN;
-    const igUserId = process.env.META_TEST_IG_USER_ID;
-
-    if (!accessToken || !igUserId) {
-      return res.status(400).json({
-        error: "META_TEST_TOKEN ou META_TEST_IG_USER_ID não configurados",
-      });
-    }
-
-    const response = await fetch(
-      `https://graph.facebook.com/v23.0/${igUserId}/media?fields=id,caption,media_type,media_url,timestamp&access_token=${encodeURIComponent(accessToken)}`
-    );
-
-    const data = await response.json();
-
-    return res.status(response.ok ? 200 : 400).json(data);
-  } catch (error) {
-    console.error("Erro /me/instagram/media:", error);
-
-    return res.status(500).json({
-      error: "Erro ao buscar posts do Instagram",
-    });
-  }
-});
-
 /* ===========================================================
    LOGIN INSTAGRAM APP
 =========================================================== */
@@ -651,14 +519,13 @@ app.get("/auth/app/instagram/login", (req, res) => {
   }
 });
 
-
 app.get("/auth/app/instagram/callback", async (req, res) => {
   try {
     const { code, error, error_reason, error_description } = req.query;
 
     if (error) {
       return res.redirect(
-        `${process.env.APP_DEEP_LINK}?success=false&error=${encodeURIComponent(
+        `${APP_DEEP_LINK}?success=false&error=${encodeURIComponent(
           error_description || error_reason || "Login não autorizado"
         )}`
       );
@@ -666,7 +533,7 @@ app.get("/auth/app/instagram/callback", async (req, res) => {
 
     if (!code) {
       return res.redirect(
-        `${process.env.APP_DEEP_LINK}?success=false&error=${encodeURIComponent(
+        `${APP_DEEP_LINK}?success=false&error=${encodeURIComponent(
           "Código não recebido"
         )}`
       );
@@ -695,7 +562,7 @@ app.get("/auth/app/instagram/callback", async (req, res) => {
       console.error("Erro troca token Instagram:", tokenData);
 
       return res.redirect(
-        `${process.env.APP_DEEP_LINK}?success=false&error=${encodeURIComponent(
+        `${APP_DEEP_LINK}?success=false&error=${encodeURIComponent(
           tokenData?.error_message ||
             tokenData?.error_type ||
             "Falha ao trocar code por token"
@@ -704,39 +571,103 @@ app.get("/auth/app/instagram/callback", async (req, res) => {
     }
 
     const accessToken = tokenData.access_token;
+    const userId = tokenData.user_id || tokenData.id || null;
 
-    const profileResponse = await fetch(
-      `https://graph.instagram.com/me?fields=id,username,account_type,media_count&access_token=${encodeURIComponent(accessToken)}`
+    const profileData = await fetchJson(
+      `https://graph.instagram.com/me?fields=id,username,account_type,media_count,followers_count,follows_count,profile_picture_url&access_token=${encodeURIComponent(accessToken)}`
     );
 
-    const profileData = await profileResponse.json();
+    const mediaData = await fetchJson(
+      `https://graph.instagram.com/me/media?fields=id,caption,media_type,media_url,timestamp&access_token=${encodeURIComponent(accessToken)}`
+    );
 
-    if (!profileResponse.ok) {
-      console.error("Erro perfil Instagram:", profileData);
+    const sessionId = crypto.randomUUID();
 
-      return res.redirect(
-        `${process.env.APP_DEEP_LINK}?success=false&error=${encodeURIComponent(
-          profileData?.error?.message || "Falha ao buscar perfil"
-        )}`
-      );
-    }
-
-    console.log("Instagram conectado:", {
-      id: profileData.id,
-      username: profileData.username,
+    sessions.set(sessionId, {
+      sessionId,
+      accessToken,
+      userId: userId || profileData?.id || null,
+      profile: profileData,
+      media: Array.isArray(mediaData?.data) ? mediaData.data : [],
+      createdAt: Date.now(),
     });
 
     return res.redirect(
-      `${process.env.APP_DEEP_LINK}?success=true`
+      `${APP_DEEP_LINK}?success=true&session_id=${encodeURIComponent(sessionId)}`
     );
   } catch (error) {
     console.error("Erro login app:", error);
 
     return res.redirect(
-      `${process.env.APP_DEEP_LINK}?success=false&error=${encodeURIComponent(
+      `${APP_DEEP_LINK}?success=false&error=${encodeURIComponent(
         error.message || "Erro no login Instagram"
       )}`
     );
+  }
+});
+
+/* ===========================================================
+   ROTAS INTERNAS - INSTAGRAM DO USUÁRIO LOGADO
+=========================================================== */
+
+app.get("/me/instagram/profile", async (req, res) => {
+  try {
+    const sessionId = getSessionIdFromReq(req);
+    const session = ensureSession(sessionId);
+
+    const data = await fetchJson(
+      `https://graph.instagram.com/me?fields=id,username,account_type,media_count,followers_count,follows_count,profile_picture_url&access_token=${encodeURIComponent(session.accessToken)}`
+    );
+
+    session.profile = data;
+    sessions.set(sessionId, session);
+
+    return res.json(data);
+  } catch (error) {
+    console.error("Erro /me/instagram/profile:", error);
+
+    return res.status(500).json({
+      error: error.message || "Erro ao buscar perfil Instagram",
+    });
+  }
+});
+
+app.get("/me/instagram/media", async (req, res) => {
+  try {
+    const sessionId = getSessionIdFromReq(req);
+    const session = ensureSession(sessionId);
+
+    const data = await fetchJson(
+      `https://graph.instagram.com/me/media?fields=id,caption,media_type,media_url,timestamp&access_token=${encodeURIComponent(session.accessToken)}`
+    );
+
+    session.media = Array.isArray(data?.data) ? data.data : [];
+    sessions.set(sessionId, session);
+
+    return res.json(data);
+  } catch (error) {
+    console.error("Erro /me/instagram/media:", error);
+
+    return res.status(500).json({
+      error: error.message || "Erro ao buscar posts do Instagram",
+    });
+  }
+});
+
+app.post("/auth/app/logout", (req, res) => {
+  try {
+    const sessionId = req.body?.session_id;
+
+    if (sessionId) {
+      sessions.delete(sessionId);
+    }
+
+    return res.json({ success: true });
+  } catch (error) {
+    return res.status(500).json({
+      error: "Erro ao encerrar sessão",
+      detalhes: error.message,
+    });
   }
 });
 
