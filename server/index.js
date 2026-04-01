@@ -503,12 +503,11 @@ app.get("/auth/app/instagram/login", (req, res) => {
     );
 
     const url =
-      `https://www.instagram.com/oauth/authorize` +
-      `?force_reauth=true` +
-      `&client_id=${process.env.INSTAGRAM_CLIENT_ID}` +
+      `https://www.facebook.com/v23.0/dialog/oauth` +
+      `?client_id=${process.env.INSTAGRAM_CLIENT_ID}` +
       `&redirect_uri=${redirectUri}` +
-      `&response_type=code` +
-      `&scope=instagram_business_basic`;
+      `&scope=pages_show_list,instagram_basic,business_management` +
+      `&response_type=code`;
 
     return res.json({ authUrl: url });
   } catch (error) {
