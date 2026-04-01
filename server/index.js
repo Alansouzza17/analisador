@@ -527,43 +527,96 @@ app.get("/auth/app/instagram/callback", async (req, res) => {
   try {
     const { code, error, error_reason, error_description, state } = req.query;
 
-    const redirectBack =
-      typeof state === "string" && state.trim()
-        ? state.trim()
-        : process.env.APP_DEEP_LINK;
-
     if (error) {
-      return res.redirect(
-        `${redirectBack}?success=false&error=${encodeURIComponent(
-          error_description || error_reason || "Login não autorizado"
-        )}`
-      );
+      return res.send(`
+        <html>
+          <body style="font-family: Arial; padding: 30px; text-align: center;">
+            <h2>Erro no login Instagram</h2>
+            <p>${error_description || error_reason || "Login não autorizado"}</p>
+          </body>
+        </html>
+      `);
     }
 
     if (!code) {
-      return res.redirect(
-        `${redirectBack}?success=false&error=${encodeURIComponent(
-          "Código não recebido"
-        )}`
-      );
+      return res.send(`
+        <html>
+          <body style="font-family: Arial; padding: 30px; text-align: center;">
+            <h2>Código não recebido</h2>
+          </body>
+        </html>
+      `);
     }
 
-    // resto do callback...
+    const redirectUri = `${process.env.BASE_URL}/auth/app/instagram/callback`;
 
-    return res.redirect(
-      `${redirectBack}?success=true&session_id=${encodeURIComponent(sessionId)}`
+    const form = new URLSearchParams();
+    form.append("client_id", process.env.INSTAGRAM_CLIENT_ID);
+    form.append("client_secret", process.env.INSTAGRAM_CLIENT_SECRET);
+    form.append("grant_type", "authorization_code");
+    form.append("redirect_uri", redirectUri);
+    form.append("code", code);
+
+    const tokenResponse = await fetch(
+      "https://api.instagram.com/oauth/access_token",
+      {
+        method: "POST",
+        body: form,
+      }
     );
+
+    const tokenData = await tokenResponse.json();
+
+    if (!tokenResponse.ok) {
+      return res.send(`
+        <html>
+          <body style="font-family: Arial; padding: 30px;">
+            <h2>Erro ao obter token</h2>
+            <pre>${JSON.stringify(tokenData, null, 2)}</pre>
+          </body>
+        </html>
+      `);
+    }
+
+    const accessToken = tokenData.access_token;
+
+    const profileResponse = await fetch(
+      `https://graph.instagram.com/me?fields=id,username,account_type,media_count&access_token=${accessToken}`
+    );
+
+    const profileData = await profileResponse.json();
+
+    const sessionId = Math.random().toString(36).substring(2);
+
+    return res.send(`
+      <html>
+        <body style="font-family: Arial; padding: 30px;">
+          <h2>Login Instagram concluído com sucesso</h2>
+          
+          <h3>Session ID:</h3>
+          <pre>${sessionId}</pre>
+
+          <h3>Perfil:</h3>
+          <pre>${JSON.stringify(profileData, null, 2)}</pre>
+
+          <p>Agora sabemos que o login funcionou.</p>
+        </body>
+      </html>
+    `);
+
   } catch (error) {
-    const redirectBack = process.env.APP_DEEP_LINK;
+    console.error("Erro login:", error);
 
-    return res.redirect(
-      `${redirectBack}?success=false&error=${encodeURIComponent(
-        error.message || "Erro no login Instagram"
-      )}`
-    );
+    return res.send(`
+      <html>
+        <body style="font-family: Arial; padding: 30px;">
+          <h2>Erro no callback</h2>
+          <pre>${error.message}</pre>
+        </body>
+      </html>
+    `);
   }
 });
-
 /* ===========================================================
    ROTAS INTERNAS - INSTAGRAM DO USUÁRIO LOGADO
 =========================================================== */
