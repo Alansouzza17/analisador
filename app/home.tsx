@@ -229,6 +229,19 @@ export default function Home() {
 
             <TouchableOpacity
               style={styles.actionCard}
+              onPress={() => router.push("/contas")}
+            >
+              <View style={styles.actionIconBox}>
+                <Ionicons name="people-circle-outline" size={24} color="#d62976" />
+              </View>
+              <Text style={styles.actionTitle}>Contas</Text>
+              <Text style={styles.actionSubtitle}>
+                Gerencie contas conectadas
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.actionCard}
               onPress={() => router.push("/Sugestao")}
             >
               <View style={styles.actionIconBox}>

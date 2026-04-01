@@ -1,7 +1,6 @@
 import { API_URL } from "@/services/api";
 import { getActiveSessionId } from "@/services/session";
 import { Ionicons } from "@expo/vector-icons";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";

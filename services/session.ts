@@ -29,3 +29,23 @@ export async function saveConnectedAccount(account: ConnectedAccount) {
 export async function getActiveSessionId(): Promise<string | null> {
   return await AsyncStorage.getItem(ACTIVE_ACCOUNT_STORAGE_KEY);
 }
+
+export async function setActiveSessionId(sessionId: string) {
+  await AsyncStorage.setItem(ACTIVE_ACCOUNT_STORAGE_KEY, sessionId);
+}
+
+export async function removeConnectedAccount(sessionId: string) {
+  const accounts = await getConnectedAccounts();
+  const updated = accounts.filter((account) => account.sessionId !== sessionId);
+  await AsyncStorage.setItem(ACCOUNTS_STORAGE_KEY, JSON.stringify(updated));
+
+  const active = await getActiveSessionId();
+  if (active === sessionId) {
+    const nextActive = updated.length > 0 ? updated[0].sessionId : null;
+    if (nextActive) {
+      await setActiveSessionId(nextActive);
+    } else {
+      await AsyncStorage.removeItem(ACTIVE_ACCOUNT_STORAGE_KEY);
+    }
+  }
+}
