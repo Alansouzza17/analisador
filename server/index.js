@@ -1,7 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 import bodyParser from "body-parser";
 import cors from "cors";
-import crypto from "crypto";
 import "dotenv/config";
 import express from "express";
 import fetch from "node-fetch";
@@ -502,17 +501,23 @@ app.get("/auth/app/instagram/login", (req, res) => {
       `${BASE_URL}/auth/app/instagram/callback`
     );
 
+    const redirectBack =
+      typeof req.query.redirect_back === "string" && req.query.redirect_back.trim()
+        ? req.query.redirect_back.trim()
+        : process.env.APP_DEEP_LINK;
+
     const url =
       `https://api.instagram.com/oauth/authorize` +
       `?client_id=${process.env.INSTAGRAM_CLIENT_ID}` +
       `&redirect_uri=${redirectUri}` +
       `&scope=instagram_business_basic,instagram_business_manage_messages,instagram_business_manage_comments` +
-      `&response_type=code`;
+      `&response_type=code` +
+      `&state=${encodeURIComponent(redirectBack)}`;
 
     return res.json({ authUrl: url });
   } catch (error) {
     return res.status(500).json({
-      error: "Erro ao gerar login Instagram",
+      error: "Erro ao gerar login do Instagram",
       detalhes: error.message,
     });
   }
@@ -520,11 +525,16 @@ app.get("/auth/app/instagram/login", (req, res) => {
 
 app.get("/auth/app/instagram/callback", async (req, res) => {
   try {
-    const { code, error, error_reason, error_description } = req.query;
+    const { code, error, error_reason, error_description, state } = req.query;
+
+    const redirectBack =
+      typeof state === "string" && state.trim()
+        ? state.trim()
+        : process.env.APP_DEEP_LINK;
 
     if (error) {
       return res.redirect(
-        `${APP_DEEP_LINK}?success=false&error=${encodeURIComponent(
+        `${redirectBack}?success=false&error=${encodeURIComponent(
           error_description || error_reason || "Login não autorizado"
         )}`
       );
@@ -532,73 +542,22 @@ app.get("/auth/app/instagram/callback", async (req, res) => {
 
     if (!code) {
       return res.redirect(
-        `${APP_DEEP_LINK}?success=false&error=${encodeURIComponent(
+        `${redirectBack}?success=false&error=${encodeURIComponent(
           "Código não recebido"
         )}`
       );
     }
 
-    const redirectUri = `${BASE_URL}/auth/app/instagram/callback`;
-
-    const form = new URLSearchParams();
-    form.append("client_id", process.env.INSTAGRAM_CLIENT_ID);
-    form.append("client_secret", process.env.INSTAGRAM_CLIENT_SECRET);
-    form.append("grant_type", "authorization_code");
-    form.append("redirect_uri", redirectUri);
-    form.append("code", code);
-
-    const tokenResponse = await fetch(
-      "https://api.instagram.com/oauth/access_token",
-      {
-        method: "POST",
-        body: form,
-      }
-    );
-
-    const tokenData = await tokenResponse.json();
-
-    if (!tokenResponse.ok) {
-      console.error("Erro troca token Instagram:", tokenData);
-
-      return res.redirect(
-        `${APP_DEEP_LINK}?success=false&error=${encodeURIComponent(
-          tokenData?.error_message ||
-            tokenData?.error_type ||
-            "Falha ao trocar code por token"
-        )}`
-      );
-    }
-
-    const accessToken = tokenData.access_token;
-    const userId = tokenData.user_id || tokenData.id || null;
-
-    const profileData = await fetchJson(
-      `https://graph.instagram.com/me?fields=id,username,account_type,media_count,followers_count,follows_count,profile_picture_url&access_token=${encodeURIComponent(accessToken)}`
-    );
-
-    const mediaData = await fetchJson(
-      `https://graph.instagram.com/me/media?fields=id,caption,media_type,media_url,timestamp&access_token=${encodeURIComponent(accessToken)}`
-    );
-
-    const sessionId = crypto.randomUUID();
-
-    sessions.set(sessionId, {
-      sessionId,
-      accessToken,
-      userId: userId || profileData?.id || null,
-      profile: profileData,
-      media: Array.isArray(mediaData?.data) ? mediaData.data : [],
-      createdAt: Date.now(),
-    });
+    // resto do callback...
 
     return res.redirect(
-      `${APP_DEEP_LINK}?success=true&session_id=${encodeURIComponent(sessionId)}`
+      `${redirectBack}?success=true&session_id=${encodeURIComponent(sessionId)}`
     );
   } catch (error) {
-    console.error("Erro login app:", error);
+    const redirectBack = process.env.APP_DEEP_LINK;
 
     return res.redirect(
-      `${APP_DEEP_LINK}?success=false&error=${encodeURIComponent(
+      `${redirectBack}?success=false&error=${encodeURIComponent(
         error.message || "Erro no login Instagram"
       )}`
     );

@@ -123,10 +123,12 @@ export default function Login() {
     setSubmitting(true);
 
     const response = await fetch(
-      `${API_URL}/auth/app/instagram/login`
-    );
+  `${API_URL}/auth/app/instagram/login?redirect_back=${encodeURIComponent(REDIRECT_URI)}`
+);
 
     const data = await response.json();
+
+    console.log("REDIRECT_URI:", REDIRECT_URI);
 
     if (!response.ok || !data?.authUrl) {
       throw new Error(
