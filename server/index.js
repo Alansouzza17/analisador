@@ -635,18 +635,18 @@ app.get("/auth/app/instagram/login", (req, res) => {
     );
 
     const url =
-      `https://www.facebook.com/v23.0/dialog/oauth` +
-      `?client_id=${process.env.META_APP_ID}` +
+      `https://www.instagram.com/oauth/authorize` +
+      `?force_reauth=true` +
+      `&client_id=${process.env.INSTAGRAM_CLIENT_ID}` +
       `&redirect_uri=${redirectUri}` +
-      `&scope=public_profile,pages_show_list,instagram_basic,business_management` +
-      `&response_type=code`;
+      `&response_type=code` +
+      `&scope=instagram_business_basic`;
 
-    return res.json({
-      authUrl: url,
-    });
+    return res.json({ authUrl: url });
   } catch (error) {
     return res.status(500).json({
-      error: "Erro ao gerar login Instagram",
+      error: "Erro ao gerar login do Instagram",
+      detalhes: error.message,
     });
   }
 });
@@ -654,28 +654,89 @@ app.get("/auth/app/instagram/login", (req, res) => {
 
 app.get("/auth/app/instagram/callback", async (req, res) => {
   try {
-    const { code } = req.query;
+    const { code, error, error_reason, error_description } = req.query;
+
+    if (error) {
+      return res.redirect(
+        `${process.env.APP_DEEP_LINK}?success=false&error=${encodeURIComponent(
+          error_description || error_reason || "Login não autorizado"
+        )}`
+      );
+    }
 
     if (!code) {
-      return res.status(400).send("Código não recebido");
+      return res.redirect(
+        `${process.env.APP_DEEP_LINK}?success=false&error=${encodeURIComponent(
+          "Código não recebido"
+        )}`
+      );
     }
 
     const redirectUri = `${BASE_URL}/auth/app/instagram/callback`;
 
-    const tokenUrl =
-      `https://graph.facebook.com/v23.0/oauth/access_token` +
-      `?client_id=${process.env.META_APP_ID}` +
-      `&redirect_uri=${encodeURIComponent(redirectUri)}` +
-      `&client_secret=${process.env.META_APP_SECRET}` +
-      `&code=${code}`;
+    const form = new URLSearchParams();
+    form.append("client_id", process.env.INSTAGRAM_CLIENT_ID);
+    form.append("client_secret", process.env.INSTAGRAM_CLIENT_SECRET);
+    form.append("grant_type", "authorization_code");
+    form.append("redirect_uri", redirectUri);
+    form.append("code", code);
 
-    const response = await fetch(tokenUrl);
-    const data = await response.json();
+    const tokenResponse = await fetch(
+      "https://api.instagram.com/oauth/access_token",
+      {
+        method: "POST",
+        body: form,
+      }
+    );
 
-    return res.send("Login realizado com sucesso. Pode voltar para o app.");
+    const tokenData = await tokenResponse.json();
+
+    if (!tokenResponse.ok) {
+      console.error("Erro troca token Instagram:", tokenData);
+
+      return res.redirect(
+        `${process.env.APP_DEEP_LINK}?success=false&error=${encodeURIComponent(
+          tokenData?.error_message ||
+            tokenData?.error_type ||
+            "Falha ao trocar code por token"
+        )}`
+      );
+    }
+
+    const accessToken = tokenData.access_token;
+
+    const profileResponse = await fetch(
+      `https://graph.instagram.com/me?fields=id,username,account_type,media_count&access_token=${encodeURIComponent(accessToken)}`
+    );
+
+    const profileData = await profileResponse.json();
+
+    if (!profileResponse.ok) {
+      console.error("Erro perfil Instagram:", profileData);
+
+      return res.redirect(
+        `${process.env.APP_DEEP_LINK}?success=false&error=${encodeURIComponent(
+          profileData?.error?.message || "Falha ao buscar perfil"
+        )}`
+      );
+    }
+
+    console.log("Instagram conectado:", {
+      id: profileData.id,
+      username: profileData.username,
+    });
+
+    return res.redirect(
+      `${process.env.APP_DEEP_LINK}?success=true`
+    );
   } catch (error) {
     console.error("Erro login app:", error);
-    res.status(500).send("Erro login Instagram");
+
+    return res.redirect(
+      `${process.env.APP_DEEP_LINK}?success=false&error=${encodeURIComponent(
+        error.message || "Erro no login Instagram"
+      )}`
+    );
   }
 });
 
