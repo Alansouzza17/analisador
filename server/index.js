@@ -527,25 +527,25 @@ app.get("/auth/app/instagram/callback", async (req, res) => {
   try {
     const { code, error, error_reason, error_description, state } = req.query;
 
+    const redirectBack =
+      typeof state === "string" && state.trim()
+        ? state.trim()
+        : process.env.APP_DEEP_LINK || "analisador://instagram-auth";
+
     if (error) {
-      return res.send(`
-        <html>
-          <body style="font-family: Arial; padding: 30px; text-align: center;">
-            <h2>Erro no login Instagram</h2>
-            <p>${error_description || error_reason || "Login não autorizado"}</p>
-          </body>
-        </html>
-      `);
+      return res.redirect(
+        `${redirectBack}?success=false&error=${encodeURIComponent(
+          error_description || error_reason || "Login não autorizado"
+        )}`
+      );
     }
 
     if (!code) {
-      return res.send(`
-        <html>
-          <body style="font-family: Arial; padding: 30px; text-align: center;">
-            <h2>Código não recebido</h2>
-          </body>
-        </html>
-      `);
+      return res.redirect(
+        `${redirectBack}?success=false&error=${encodeURIComponent(
+          "Código não recebido"
+        )}`
+      );
     }
 
     const redirectUri = `${process.env.BASE_URL}/auth/app/instagram/callback`;
@@ -568,75 +568,115 @@ app.get("/auth/app/instagram/callback", async (req, res) => {
     const tokenData = await tokenResponse.json();
 
     if (!tokenResponse.ok) {
-      return res.send(`
-        <html>
-          <body style="font-family: Arial; padding: 30px;">
-            <h2>Erro ao obter token</h2>
-            <pre>${JSON.stringify(tokenData, null, 2)}</pre>
-          </body>
-        </html>
-      `);
+      return res.redirect(
+        `${redirectBack}?success=false&error=${encodeURIComponent(
+          tokenData?.error_message ||
+            tokenData?.error_type ||
+            "Erro ao obter token"
+        )}`
+      );
     }
 
     const accessToken = tokenData.access_token;
 
     const profileResponse = await fetch(
-      `https://graph.instagram.com/me?fields=id,username,account_type,media_count&access_token=${accessToken}`
+      `https://graph.instagram.com/me?fields=id,username,account_type,media_count&access_token=${encodeURIComponent(accessToken)}`
     );
 
     const profileData = await profileResponse.json();
 
+    if (!profileResponse.ok) {
+      return res.redirect(
+        `${redirectBack}?success=false&error=${encodeURIComponent(
+          profileData?.error?.message || "Erro ao buscar perfil"
+        )}`
+      );
+    }
+
     const sessionId = Math.random().toString(36).substring(2);
 
-    return res.send(`
-      <html>
-        <body style="font-family: Arial; padding: 30px;">
-          <h2>Login Instagram concluído com sucesso</h2>
-          
-          <h3>Session ID:</h3>
-          <pre>${sessionId}</pre>
+    if (!global.instagramSessions) {
+      global.instagramSessions = {};
+    }
 
-          <h3>Perfil:</h3>
-          <pre>${JSON.stringify(profileData, null, 2)}</pre>
+    global.instagramSessions[sessionId] = {
+      accessToken,
+      profile: profileData,
+      createdAt: Date.now(),
+    };
 
-          <p>Agora sabemos que o login funcionou.</p>
-        </body>
-      </html>
-    `);
-
+    return res.redirect(
+      `${redirectBack}?success=true&session_id=${encodeURIComponent(sessionId)}`
+    );
   } catch (error) {
     console.error("Erro login:", error);
 
     const redirectBack =
-  typeof state === "string" && state.trim()
-    ? state.trim()
-    : "analisador://instagram-auth";
+      process.env.APP_DEEP_LINK || "analisador://instagram-auth";
 
-return res.redirect(
-  `${redirectBack}?success=true&session_id=${encodeURIComponent(sessionId)}`
-);
+    return res.redirect(
+      `${redirectBack}?success=false&error=${encodeURIComponent(
+        error.message || "Erro no callback"
+      )}`
+    );
+  }
+});
 /* ===========================================================
    ROTAS INTERNAS - INSTAGRAM DO USUÁRIO LOGADO
 =========================================================== */
 
 app.get("/me/instagram/profile", async (req, res) => {
   try {
-    const sessionId = getSessionIdFromReq(req);
-    const session = ensureSession(sessionId);
+    const sessionId = req.query.session_id;
 
-    const data = await fetchJson(
-      `https://graph.instagram.com/me?fields=id,username,account_type,media_count,followers_count,follows_count,profile_picture_url&access_token=${encodeURIComponent(session.accessToken)}`
+    if (!sessionId || !global.instagramSessions?.[sessionId]) {
+      return res.status(401).json({
+        error: "Sessão inválida ou expirada",
+      });
+    }
+
+    const session = global.instagramSessions[sessionId];
+
+    const response = await fetch(
+      `https://graph.instagram.com/me?fields=id,username,account_type,media_count&access_token=${encodeURIComponent(session.accessToken)}`
     );
 
-    session.profile = data;
-    sessions.set(sessionId, session);
+    const data = await response.json();
 
-    return res.json(data);
+    return res.status(response.ok ? 200 : 400).json(data);
   } catch (error) {
     console.error("Erro /me/instagram/profile:", error);
 
     return res.status(500).json({
-      error: error.message || "Erro ao buscar perfil Instagram",
+      error: "Erro ao buscar perfil Instagram",
+    });
+  }
+});
+
+app.get("/me/instagram/media", async (req, res) => {
+  try {
+    const sessionId = req.query.session_id;
+
+    if (!sessionId || !global.instagramSessions?.[sessionId]) {
+      return res.status(401).json({
+        error: "Sessão inválida ou expirada",
+      });
+    }
+
+    const session = global.instagramSessions[sessionId];
+
+    const response = await fetch(
+      `https://graph.instagram.com/me/media?fields=id,caption,media_type,media_url,timestamp&access_token=${encodeURIComponent(session.accessToken)}`
+    );
+
+    const data = await response.json();
+
+    return res.status(response.ok ? 200 : 400).json(data);
+  } catch (error) {
+    console.error("Erro /me/instagram/media:", error);
+
+    return res.status(500).json({
+      error: "Erro ao buscar posts do Instagram",
     });
   }
 });
