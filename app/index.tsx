@@ -70,38 +70,43 @@ export default function Login() {
     }
   }
 
-  async function handleDeepLink(url: string) {
-    try {
-      const parsed = Linking.parse(url);
-      const success = parsed.queryParams?.success;
-      const sessionId = parsed.queryParams?.session_id;
-      const error = parsed.queryParams?.error;
+ async function handleDeepLink(url: string) {
+  try {
+    console.log("DEEP LINK URL:", url);
 
-      if (success === "true" && typeof sessionId === "string") {
-        const nomeSalvo = nome.trim() || "Instagram";
+    const parsed = Linking.parse(url);
+    const success = parsed.queryParams?.success;
+    const sessionId = parsed.queryParams?.session_id;
+    const error = parsed.queryParams?.error;
 
-        await AsyncStorage.multiSet([
-          [USER_STORAGE_KEY, nomeSalvo],
-          [SESSION_STORAGE_KEY, sessionId],
-        ]);
+    if (success === "true" && typeof sessionId === "string") {
+      const nomeSalvo = nome.trim() || "Instagram";
 
-        setSubmitting(false);
-        router.replace("/home");
-        return;
-      }
+      await AsyncStorage.multiSet([
+        [USER_STORAGE_KEY, nomeSalvo],
+        [SESSION_STORAGE_KEY, sessionId],
+      ]);
 
-      if (success === "false") {
-        setSubmitting(false);
-        Alert.alert(
-          "Erro",
-          String(error || "Não foi possível conectar com o Instagram")
-        );
-      }
-    } catch (error) {
-      console.log("Erro ao tratar deep link:", error);
       setSubmitting(false);
+      router.replace("/home");
+      return;
     }
+
+    if (success === "false") {
+      setSubmitting(false);
+      Alert.alert(
+        "Erro",
+        String(error || "Não foi possível conectar com o Instagram")
+      );
+      return;
+    }
+
+    setSubmitting(false);
+  } catch (error) {
+    console.log("Erro ao tratar deep link:", error);
+    setSubmitting(false);
   }
+}
 
   async function handleEntrar() {
     if (!nome.trim()) return;
@@ -123,17 +128,16 @@ export default function Login() {
     setSubmitting(true);
 
     const response = await fetch(
-  `${API_URL}/auth/app/instagram/login?redirect_back=${encodeURIComponent(REDIRECT_URI)}`
-);
+      `${API_URL}/auth/app/instagram/login?redirect_back=${encodeURIComponent(REDIRECT_URI)}`
+    );
 
     const data = await response.json();
 
+    console.log("AUTH URL:", data.authUrl);
     console.log("REDIRECT_URI:", REDIRECT_URI);
 
     if (!response.ok || !data?.authUrl) {
-      throw new Error(
-        data?.error || "Falha ao iniciar login com Instagram"
-      );
+      throw new Error(data?.error || "Falha ao iniciar login com Instagram");
     }
 
     const result = await WebBrowser.openAuthSessionAsync(
@@ -141,20 +145,25 @@ export default function Login() {
       REDIRECT_URI
     );
 
-    if (result.type === "cancel") {
+    console.log("AUTH RESULT:", result);
+
+    if (result.type === "success" && "url" in result && result.url) {
+      await handleDeepLink(result.url);
+      return;
+    }
+
+    if (result.type === "cancel" || result.type === "dismiss") {
       setSubmitting(false);
       return;
     }
 
+    setSubmitting(false);
   } catch (error: any) {
     console.log("Erro ao entrar com Instagram:", error);
-
     Alert.alert(
       "Erro",
-      error?.message ||
-        "Não foi possível conectar com o Instagram"
+      error?.message || "Não foi possível conectar com o Instagram"
     );
-
     setSubmitting(false);
   }
 }
