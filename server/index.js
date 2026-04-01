@@ -291,6 +291,12 @@ app.get("/ia/analyze", async (req, res) => {
   try {
     const sessionId = req.query.session_id;
 
+    console.log("SESSION RECEBIDA IA:", req.query.session_id);
+    console.log(
+      "SESSION EXISTS IA:",
+      !!global.instagramSessions?.[req.query.session_id]
+    );
+
     if (!sessionId || !global.instagramSessions?.[sessionId]) {
       return res.status(401).json({
         error: "Sessão inválida ou expirada",
@@ -623,6 +629,9 @@ app.get("/auth/app/instagram/callback", async (req, res) => {
       createdAt: Date.now(),
     };
 
+    console.log("SESSION SALVA:", sessionId);
+    console.log("SESSION EXISTS AFTER SAVE:", !!global.instagramSessions?.[sessionId]);
+
     return res.redirect(
       `${redirectBack}?success=true` +
         `&session_id=${encodeURIComponent(sessionId)}` +
@@ -650,6 +659,12 @@ app.get("/auth/app/instagram/callback", async (req, res) => {
 app.get("/me/instagram/profile", async (req, res) => {
   try {
     const sessionId = req.query.session_id;
+
+    console.log("SESSION RECEBIDA PROFILE:", req.query.session_id);
+    console.log(
+      "SESSION EXISTS PROFILE:",
+      !!global.instagramSessions?.[req.query.session_id]
+    );
 
     if (!sessionId || !global.instagramSessions?.[sessionId]) {
       return res.status(401).json({
@@ -679,6 +694,12 @@ app.get("/me/instagram/media", async (req, res) => {
   try {
     const sessionId = req.query.session_id;
 
+    console.log("SESSION RECEBIDA MEDIA:", req.query.session_id);
+    console.log(
+      "SESSION EXISTS MEDIA:",
+      !!global.instagramSessions?.[req.query.session_id]
+    );
+
     if (!sessionId || !global.instagramSessions?.[sessionId]) {
       return res.status(401).json({
         error: "Sessão inválida ou expirada",
@@ -699,29 +720,6 @@ app.get("/me/instagram/media", async (req, res) => {
 
     return res.status(500).json({
       error: "Erro ao buscar posts do Instagram",
-    });
-  }
-});
-
-app.get("/me/instagram/media/alternate", async (req, res) => {
-  try {
-    const sessionId = getSessionIdFromReq(req);
-    const session = ensureSession(sessionId);
-
-    const data = await fetchJson(
-      `https://graph.instagram.com/me/media?fields=id,caption,media_type,media_url,timestamp&access_token=${encodeURIComponent(session.accessToken)}`
-    );
-
-    if (Array.isArray(data?.data)) {
-      global.instagramSessions[sessionId].media = data.data;
-    }
-
-    return res.json(data);
-  } catch (error) {
-    console.error("Erro /me/instagram/media:", error);
-
-    return res.status(500).json({
-      error: error.message || "Erro ao buscar posts do Instagram",
     });
   }
 });

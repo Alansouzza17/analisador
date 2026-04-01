@@ -1,5 +1,4 @@
 import { API_URL } from "@/services/api";
-import { getActiveSessionId } from "@/services/session";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { LinearGradient } from "expo-linear-gradient";
@@ -78,10 +77,10 @@ export default function SeguidoresScreen() {
   );
 
   async function getSessionId() {
-  return await getActiveSessionId();
-}
+    return await AsyncStorage.getItem(SESSION_STORAGE_KEY);
+  }
   
- async function carregarDados() {
+  async function carregarDados() {
   try {
     const sessionId = await getSessionId();
 
@@ -100,7 +99,7 @@ export default function SeguidoresScreen() {
       savedUpdateWarningReady,
     ] = await Promise.all([
       fetch(
-        `${API_URL}/me/instagram/profile?session_id=${encodeURIComponent(sessionId)}`
+        `${API_URL}/me/instagram/profile?session_id=${encodeURIComponent(sessionId || "")}`
       ),
       AsyncStorage.getItem(FOLLOWERS_STORAGE_KEY),
       AsyncStorage.getItem(FOLLOWING_STORAGE_KEY),
