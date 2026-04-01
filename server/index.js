@@ -286,7 +286,27 @@ app.get("/instagram/posts", async (req, res) => {
 
 app.get("/ia/analyze", async (req, res) => {
   try {
-    const posts = await getInstagramPostsFixed();
+    const sessionId = req.query.session_id;
+
+    if (!sessionId || !global.instagramSessions?.[sessionId]) {
+      return res.status(401).json({
+        error: "Sessão inválida ou expirada",
+      });
+    }
+
+    const session = global.instagramSessions[sessionId];
+
+    const postsResponse = await fetch(
+      `https://graph.instagram.com/me/media?fields=id,caption,media_type,media_url,timestamp&access_token=${encodeURIComponent(session.accessToken)}`
+    );
+
+    const postsData = await postsResponse.json();
+
+    if (!postsResponse.ok || !Array.isArray(postsData?.data)) {
+      throw new Error(postsData?.error?.message || "Erro ao buscar posts");
+    }
+
+    const posts = postsData.data;
     const rankedPosts = rankPosts(posts);
     const metrics = buildMetrics(posts);
 
@@ -322,11 +342,6 @@ Regras:
     });
 
     const raw = response.text || response.outputText || "";
-
-    if (!raw || !raw.trim()) {
-      throw new Error("Gemini retornou resposta vazia.");
-    }
-
     const json = extractJsonFromText(raw);
 
     return res.json({

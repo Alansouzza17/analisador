@@ -62,6 +62,11 @@ export default function Analysis() {
     carregarPerfil();
   }, []);
 
+  async function getSessionId() {
+  const sessionId = await AsyncStorage.getItem("@instagram_session");
+  return sessionId;
+}
+
   async function carregarUltimaAnalise() {
     try {
       const saved = await AsyncStorage.getItem(ANALYSIS_STORAGE_KEY);
@@ -78,47 +83,60 @@ export default function Analysis() {
   }
 
   async function carregarPerfil() {
-    try {
-      setLoadingProfile(true);
+  try {
+    setLoadingProfile(true);
 
-      const response = await fetch(`${API_URL}/me/instagram/profile`);
-      const data = await response.json();
+    const sessionId = await getSessionId();
 
-      if (!response.ok) {
-        throw new Error(data?.error || "Erro ao carregar perfil");
-      }
+    const response = await fetch(
+      `${API_URL}/me/instagram/profile?session_id=${sessionId}`
+    );
 
-      setProfile(data);
-    } catch (error) {
-      console.log("Erro ao carregar perfil:", error);
-    } finally {
-      setLoadingProfile(false);
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data?.error || "Erro ao carregar perfil");
     }
+
+    setProfile(data);
+  } catch (error) {
+    console.log("Erro ao carregar perfil:", error);
+  } finally {
+    setLoadingProfile(false);
   }
+}
 
-  async function analisarPerfil() {
-    try {
-      setLoadingIA(true);
-      setError("");
+async function analisarPerfil() {
+  try {
+    setLoadingIA(true);
+    setError("");
 
-      const response = await fetch(`${API_URL}/ia/analyze`);
-      const text = await response.text();
+    const sessionId = await getSessionId();
 
-      if (!response.ok) {
-        throw new Error(text);
-      }
+    const response = await fetch(
+      `${API_URL}/ia/analyze?session_id=${sessionId}`
+    );
 
-      const data: IAResponse = JSON.parse(text);
+    const text = await response.text();
 
-      setResult(data);
-      await AsyncStorage.setItem(ANALYSIS_STORAGE_KEY, JSON.stringify(data));
-    } catch (e) {
-      console.log("Erro ao analisar perfil:", e);
-      setError("Erro ao analisar perfil");
-    } finally {
-      setLoadingIA(false);
+    if (!response.ok) {
+      throw new Error(text);
     }
+
+    const data: IAResponse = JSON.parse(text);
+
+    setResult(data);
+    await AsyncStorage.setItem(
+      ANALYSIS_STORAGE_KEY,
+      JSON.stringify(data)
+    );
+  } catch (e) {
+    console.log("Erro ao analisar perfil:", e);
+    setError("Erro ao analisar perfil");
+  } finally {
+    setLoadingIA(false);
   }
+}
 
   function cleanMarkdown(text: string) {
     return text.replace(/\*\*/g, "").replace(/#/g, "");

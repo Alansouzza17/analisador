@@ -1,5 +1,6 @@
 import { API_URL } from "@/services/api";
 import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Clipboard from "expo-clipboard";
 import * as ImagePicker from "expo-image-picker";
 import { LinearGradient } from "expo-linear-gradient";
@@ -18,6 +19,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+
 type AIResult = {
   avaliacao: string;
   publico: string;
@@ -32,6 +34,11 @@ export default function Sugestao() {
   const [image, setImage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<AIResult | null>(null);
+
+  async function getSessionId() {
+  const sessionId = await AsyncStorage.getItem("@instagram_session");
+  return sessionId;
+}
 
   async function pickImage() {
     try {
@@ -92,16 +99,20 @@ export default function Sugestao() {
   }
 
   async function analyzeImage(base64: string | undefined) {
-    try {
-      if (!base64) {
-        Alert.alert("Erro", "Imagem inválida");
-        return;
-      }
+  try {
+    if (!base64) {
+      Alert.alert("Erro", "Imagem inválida");
+      return;
+    }
 
-      setLoading(true);
-      setResult(null);
+    setLoading(true);
+    setResult(null);
 
-      const response = await fetch(`${API_URL}/ia/photo`, {
+    const sessionId = await getSessionId();
+
+    const response = await fetch(
+      `${API_URL}/ia/photo?session_id=${sessionId}`,
+      {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -109,23 +120,25 @@ export default function Sugestao() {
         body: JSON.stringify({
           image: `data:image/jpeg;base64,${base64}`,
         }),
-      });
-
-      const text = await response.text();
-
-      if (!response.ok) {
-        throw new Error(text);
       }
+    );
 
-      const data: AIResult = JSON.parse(text);
-      setResult(data);
-    } catch (error) {
-      console.log("Erro IA:", error);
-      Alert.alert("Erro", "Erro ao analisar imagem");
-    } finally {
-      setLoading(false);
+    const text = await response.text();
+
+    if (!response.ok) {
+      throw new Error(text);
     }
+
+    const data: AIResult = JSON.parse(text);
+    setResult(data);
+
+  } catch (error) {
+    console.log("Erro IA:", error);
+    Alert.alert("Erro", "Erro ao analisar imagem");
+  } finally {
+    setLoading(false);
   }
+}
 
   async function copyText(value: string, label: string) {
     try {

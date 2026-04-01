@@ -73,77 +73,68 @@ export default function SeguidoresScreen() {
     }, [])
   );
 
-  async function carregarDados() {
-    try {
-      const [
-        profileResponse,
-        savedFollowers,
-        savedFollowing,
-        savedPreviousFollowers,
-        savedLastFollowers,
-        savedLastFollowing,
-        savedComparisonReady,
-      ] = await Promise.all([
-        fetch(`${API_URL}/me/instagram/profile`),
-        AsyncStorage.getItem(FOLLOWERS_STORAGE_KEY),
-        AsyncStorage.getItem(FOLLOWING_STORAGE_KEY),
-        AsyncStorage.getItem(PREVIOUS_FOLLOWERS_STORAGE_KEY),
-        AsyncStorage.getItem(LAST_API_FOLLOWERS_COUNT_KEY),
-        AsyncStorage.getItem(LAST_API_FOLLOWING_COUNT_KEY),
-        AsyncStorage.getItem(FOLLOWERS_COMPARISON_READY_KEY),
-      ]);
+  async function getSessionId() {
+  const sessionId = await AsyncStorage.getItem("@instagram_session");
+  return sessionId;
+}
+  
+ async function carregarDados() {
+  try {
+    const sessionId = await getSessionId();
 
-      const profileData = await profileResponse.json();
+    const [
+      profileResponse,
+      savedFollowers,
+      savedFollowing,
+      savedPreviousFollowers,
+      savedLastFollowers,
+      savedLastFollowing,
+      savedComparisonReady,
+    ] = await Promise.all([
+      fetch(
+        `${API_URL}/me/instagram/profile?session_id=${sessionId}`
+      ),
+      AsyncStorage.getItem(FOLLOWERS_STORAGE_KEY),
+      AsyncStorage.getItem(FOLLOWING_STORAGE_KEY),
+      AsyncStorage.getItem(PREVIOUS_FOLLOWERS_STORAGE_KEY),
+      AsyncStorage.getItem(LAST_API_FOLLOWERS_COUNT_KEY),
+      AsyncStorage.getItem(LAST_API_FOLLOWING_COUNT_KEY),
+      AsyncStorage.getItem(FOLLOWERS_COMPARISON_READY_KEY),
+    ]);
 
-      if (!profileResponse.ok) {
-        throw new Error(profileData?.error || "Erro ao buscar perfil");
-      }
+    const profileData = await profileResponse.json();
 
-      setProfile(profileData);
-      setFollowers(savedFollowers ? JSON.parse(savedFollowers) : []);
-      setFollowing(savedFollowing ? JSON.parse(savedFollowing) : []);
-      setPreviousFollowers(
-        savedPreviousFollowers ? JSON.parse(savedPreviousFollowers) : []
-      );
-      setComparisonReady(savedComparisonReady === "true");
-
-      const parsedLastFollowers = savedLastFollowers
-        ? Number(savedLastFollowers)
-        : null;
-
-      const parsedLastFollowing = savedLastFollowing
-        ? Number(savedLastFollowing)
-        : null;
-
-      let effectiveLastFollowers = parsedLastFollowers;
-      let effectiveLastFollowing = parsedLastFollowing;
-
-      if (effectiveLastFollowers === null) {
-        effectiveLastFollowers = profileData.followers_count;
-        await AsyncStorage.setItem(
-          LAST_API_FOLLOWERS_COUNT_KEY,
-          String(profileData.followers_count)
-        );
-      }
-
-      if (effectiveLastFollowing === null) {
-        effectiveLastFollowing = profileData.follows_count;
-        await AsyncStorage.setItem(
-          LAST_API_FOLLOWING_COUNT_KEY,
-          String(profileData.follows_count)
-        );
-      }
-
-      setLastApiFollowers(effectiveLastFollowers);
-      setLastApiFollowing(effectiveLastFollowing);
-      setApiReferenceLoaded(true);
-    } catch (error) {
-      console.warn("Erro ao carregar tela seguidores:", error);
-    } finally {
-      setInitialLoading(false);
-      setRefreshing(false);
+    if (!profileResponse.ok) {
+      throw new Error(profileData?.error || "Erro ao buscar perfil");
     }
+
+    setProfile(profileData);
+    setFollowers(savedFollowers ? JSON.parse(savedFollowers) : []);
+    setFollowing(savedFollowing ? JSON.parse(savedFollowing) : []);
+    setPreviousFollowers(
+      savedPreviousFollowers ? JSON.parse(savedPreviousFollowers) : []
+    );
+    setComparisonReady(savedComparisonReady === "true");
+
+    const parsedLastFollowers = savedLastFollowers
+      ? Number(savedLastFollowers)
+      : null;
+
+    const parsedLastFollowing = savedLastFollowing
+      ? Number(savedLastFollowing)
+      : null;
+
+    setLastApiFollowers(parsedLastFollowers);
+    setLastApiFollowing(parsedLastFollowing);
+    setApiReferenceLoaded(true);
+
+  } catch (error) {
+    console.warn("Erro ao carregar tela seguidores:", error);
+  } finally {
+    setInitialLoading(false);
+    setRefreshing(false);
   }
+}
 
   function handleRefresh() {
     setRefreshing(true);
