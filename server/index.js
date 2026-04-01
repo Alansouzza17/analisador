@@ -580,8 +580,8 @@ app.get("/auth/app/instagram/callback", async (req, res) => {
     const accessToken = tokenData.access_token;
 
     const profileResponse = await fetch(
-      `https://graph.instagram.com/me?fields=id,username,account_type,media_count&access_token=${encodeURIComponent(accessToken)}`
-    );
+  `https://graph.instagram.com/me?fields=id,username,account_type,media_count,followers_count,follows_count,profile_picture_url&access_token=${encodeURIComponent(accessToken)}`
+);
 
     const profileData = await profileResponse.json();
 
@@ -638,8 +638,8 @@ app.get("/me/instagram/profile", async (req, res) => {
     const session = global.instagramSessions[sessionId];
 
     const response = await fetch(
-      `https://graph.instagram.com/me?fields=id,username,account_type,media_count&access_token=${encodeURIComponent(session.accessToken)}`
-    );
+  `https://graph.instagram.com/me?fields=id,username,account_type,media_count,followers_count,follows_count,profile_picture_url&access_token=${encodeURIComponent(session.accessToken)}`
+);
 
     const data = await response.json();
 
