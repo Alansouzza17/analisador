@@ -31,7 +31,7 @@ type InstagramMedia = {
   timestamp: string;
 };
 
-const SESSION_STORAGE_KEY = "@instagram_session";
+const SESSION_STORAGE_KEY = "@instagram_session_id";
 
 export default function Profile() {
   const router = useRouter();
@@ -44,7 +44,7 @@ export default function Profile() {
     try {
       setLoading(true);
 
-      const sessionId = await AsyncStorage.getItem("@instagram_session");
+      const sessionId = await AsyncStorage.getItem(SESSION_STORAGE_KEY);
 
       if (!sessionId) {
         throw new Error("Nenhuma sessão do Instagram encontrada");

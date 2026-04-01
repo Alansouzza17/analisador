@@ -44,10 +44,11 @@ const PREVIOUS_FOLLOWERS_STORAGE_KEY = "@followers_importados_anterior";
 const LAST_API_FOLLOWERS_COUNT_KEY = "@last_api_followers_count";
 const LAST_API_FOLLOWING_COUNT_KEY = "@last_api_following_count";
 const FOLLOWERS_COMPARISON_READY_KEY = "@followers_comparison_ready";
+const SESSION_STORAGE_KEY = "@instagram_session_id";
 
 export default function SeguidoresScreen() {
   const router = useRouter();
-
+   
   const [profile, setProfile] = useState<InstagramProfile | null>(null);
   const [followers, setFollowers] = useState<UserItem[]>([]);
   const [following, setFollowing] = useState<UserItem[]>([]);
@@ -74,7 +75,7 @@ export default function SeguidoresScreen() {
   );
 
   async function getSessionId() {
-  const sessionId = await AsyncStorage.getItem("@instagram_session");
+  const sessionId = await AsyncStorage.getItem(SESSION_STORAGE_KEY);
   return sessionId;
 }
   

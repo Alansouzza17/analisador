@@ -30,13 +30,14 @@ type AIResult = {
 
 export default function Sugestao() {
   const router = useRouter();
+  const SESSION_STORAGE_KEY = "@instagram_session_id";
 
   const [image, setImage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<AIResult | null>(null);
 
   async function getSessionId() {
-  const sessionId = await AsyncStorage.getItem("@instagram_session");
+  const sessionId = await AsyncStorage.getItem(SESSION_STORAGE_KEY);;
   return sessionId;
 }
 
