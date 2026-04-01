@@ -607,16 +607,14 @@ app.get("/auth/app/instagram/callback", async (req, res) => {
   } catch (error) {
     console.error("Erro login:", error);
 
-    return res.send(`
-      <html>
-        <body style="font-family: Arial; padding: 30px;">
-          <h2>Erro no callback</h2>
-          <pre>${error.message}</pre>
-        </body>
-      </html>
-    `);
-  }
-});
+    const redirectBack =
+  typeof state === "string" && state.trim()
+    ? state.trim()
+    : "analisador://instagram-auth";
+
+return res.redirect(
+  `${redirectBack}?success=true&session_id=${encodeURIComponent(sessionId)}`
+);
 /* ===========================================================
    ROTAS INTERNAS - INSTAGRAM DO USUÁRIO LOGADO
 =========================================================== */
