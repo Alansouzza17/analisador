@@ -7,15 +7,15 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  Image,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    Image,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -63,7 +63,7 @@ export default function Analysis() {
   }, []);
 
   async function getSessionId() {
-  const sessionId = await AsyncStorage.getItem("@instagram_session");
+  const sessionId = await AsyncStorage.getItem("@instagram_session_id");
   return sessionId;
 }
 

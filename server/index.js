@@ -24,7 +24,10 @@ const ai = new GoogleGenAI({
    SESSÕES
 =========================================================== */
 
-const sessions = new Map();
+// Inicializar armazenamento global de sessões
+if (!global.instagramSessions) {
+  global.instagramSessions = {};
+}
 
 /* ===========================================================
    HELPERS
@@ -167,11 +170,11 @@ function getSessionIdFromReq(req) {
 }
 
 function ensureSession(sessionId) {
-  if (!sessionId || !sessions.has(sessionId)) {
+  if (!sessionId || !global.instagramSessions?.[sessionId]) {
     throw new Error("Sessão inválida ou expirada");
   }
 
-  return sessions.get(sessionId);
+  return global.instagramSessions[sessionId];
 }
 
 async function fetchJson(url, options = {}) {
@@ -696,7 +699,7 @@ app.get("/me/instagram/media", async (req, res) => {
   }
 });
 
-app.get("/me/instagram/media", async (req, res) => {
+app.get("/me/instagram/media/alternate", async (req, res) => {
   try {
     const sessionId = getSessionIdFromReq(req);
     const session = ensureSession(sessionId);
@@ -705,8 +708,9 @@ app.get("/me/instagram/media", async (req, res) => {
       `https://graph.instagram.com/me/media?fields=id,caption,media_type,media_url,timestamp&access_token=${encodeURIComponent(session.accessToken)}`
     );
 
-    session.media = Array.isArray(data?.data) ? data.data : [];
-    sessions.set(sessionId, session);
+    if (Array.isArray(data?.data)) {
+      global.instagramSessions[sessionId].media = data.data;
+    }
 
     return res.json(data);
   } catch (error) {
@@ -722,8 +726,8 @@ app.post("/auth/app/logout", (req, res) => {
   try {
     const sessionId = req.body?.session_id;
 
-    if (sessionId) {
-      sessions.delete(sessionId);
+    if (sessionId && global.instagramSessions?.[sessionId]) {
+      delete global.instagramSessions[sessionId];
     }
 
     return res.json({ success: true });
