@@ -1,22 +1,22 @@
 import {
-    ConnectedAccount,
-    getActiveSessionId,
-    getConnectedAccounts,
-    removeConnectedAccount,
-    setActiveSessionId,
+  ConnectedAccount,
+  getActiveSessionId,
+  getConnectedAccounts,
+  removeConnectedAccount,
+  setActiveSessionId,
 } from "@/services/session";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useState } from "react";
 import {
-    Alert,
-    FlatList,
-    Image,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  Alert,
+  FlatList,
+  Image,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -49,9 +49,23 @@ export default function ContasScreen() {
   }
 
   async function handleRemove(sessionId: string) {
-    await removeConnectedAccount(sessionId);
-    await loadAccounts();
+  const isActive = sessionId === activeSessionId;
+
+  await removeConnectedAccount(sessionId);
+
+  if (isActive) {
+    const updatedAccounts = await getConnectedAccounts();
+
+    if (updatedAccounts.length > 0) {
+      await setActiveSessionId(updatedAccounts[0].sessionId);
+    } else {
+      router.replace("/");
+      return;
+    }
   }
+
+  await loadAccounts();
+}
 
   return (
     <View style={styles.screen}>
@@ -118,7 +132,7 @@ export default function ContasScreen() {
         ListFooterComponent={
           <TouchableOpacity
             style={styles.addButton}
-            onPress={() => router.push("/")}
+            onPress={() => router.replace("/")}
           >
             <Text style={styles.addButtonText}>Conectar nova conta</Text>
           </TouchableOpacity>

@@ -82,14 +82,18 @@ export default function Analysis() {
     }
   }
 
-  async function carregarPerfil() {
+ async function carregarPerfil() {
   try {
     setLoadingProfile(true);
 
     const sessionId = await getSessionId();
 
+    if (!sessionId) {
+      throw new Error("Sessão não encontrada");
+    }
+
     const response = await fetch(
-      `${API_URL}/me/instagram/profile?session_id=${sessionId}`
+      `${API_URL}/me/instagram/profile?session_id=${encodeURIComponent(sessionId)}`
     );
 
     const data = await response.json();
@@ -106,15 +110,19 @@ export default function Analysis() {
   }
 }
 
-async function analisarPerfil() {
+  async function analisarPerfil() {
   try {
     setLoadingIA(true);
     setError("");
 
     const sessionId = await getSessionId();
 
+    if (!sessionId) {
+      throw new Error("Sessão não encontrada");
+    }
+
     const response = await fetch(
-      `${API_URL}/ia/analyze?session_id=${sessionId}`
+      `${API_URL}/ia/analyze?session_id=${encodeURIComponent(sessionId)}`
     );
 
     const text = await response.text();
@@ -126,6 +134,7 @@ async function analisarPerfil() {
     const data: IAResponse = JSON.parse(text);
 
     setResult(data);
+
     await AsyncStorage.setItem(
       ANALYSIS_STORAGE_KEY,
       JSON.stringify(data)

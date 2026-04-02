@@ -31,8 +31,6 @@ type InstagramMedia = {
   timestamp: string;
 };
 
-const SESSION_STORAGE_KEY = "@instagram_session_id";
-
 export default function Profile() {
   const router = useRouter();
 
@@ -121,11 +119,18 @@ export default function Profile() {
 
         {profile && (
           <View style={styles.headerCard}>
-            <Image
-              source={{ uri: profile.profile_picture_url }}
-              style={styles.avatar}
-            />
-            <Text style={styles.username}>@{profile.username}</Text>
+            {profile.profile_picture_url ? (
+  <Image
+    source={{ uri: profile.profile_picture_url }}
+    style={styles.avatar}
+  />
+) : (
+  <View style={styles.avatarFallback}>
+    <Text style={styles.avatarFallbackText}>
+      {profile.username?.charAt(0)?.toUpperCase() || "@"}
+    </Text>
+  </View>
+)}
 
             <View style={styles.infoRow}>
               <View style={styles.infoBox}>
@@ -315,4 +320,20 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: "center",
   },
+  avatarFallback: {
+  width: 110,
+  height: 110,
+  borderRadius: 55,
+  borderWidth: 3,
+  borderColor: "#fff",
+  marginBottom: 14,
+  backgroundColor: "rgba(255,255,255,0.2)",
+  alignItems: "center",
+  justifyContent: "center",
+},
+avatarFallbackText: {
+  color: "#fff",
+  fontSize: 36,
+  fontWeight: "800",
+},
 });

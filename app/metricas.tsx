@@ -3,7 +3,7 @@ import { getActiveSessionId } from "@/services/session";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -50,58 +50,65 @@ export default function Metricas() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  const SESSION_STORAGE_KEY = "@instagram_session_id";
-
   async function getSessionId() {
-    return await getActiveSessionId();
-  }
+  return await getActiveSessionId();
+}
 
-  useEffect(() => {
-    carregarDados();
-  }, []);
 
   async function carregarDados() {
-    try {
-      const sessionId = await getSessionId();
+  try {
+    const sessionId = await getSessionId();
 
-      if (!sessionId) {
-        throw new Error("Sessão não encontrada");
-      }
-
-      const [profileResponse, analysisResponse] = await Promise.all([
-        fetch(
-          `${API_URL}/me/instagram/profile?session_id=${encodeURIComponent(
-            sessionId
-          )}`
-        ),
-        fetch(
-          `${API_URL}/ia/analyze?session_id=${encodeURIComponent(sessionId)}`
-        ),
-      ]);
-
-      const profileData = await profileResponse.json();
-      const analysisData = await analysisResponse.json();
-
-      if (!profileResponse.ok) {
-        throw new Error(profileData?.error || "Erro ao buscar perfil");
-      }
-
-      if (!analysisResponse.ok) {
-        throw new Error(analysisData?.error || "Erro ao buscar análise");
-      }
-
-      setProfile(profileData);
-      setAnalysis(analysisData);
-    } catch (error: any) {
-      Alert.alert(
-        "Erro",
-        error?.message || "Não foi possível carregar as métricas"
-      );
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
+    if (!sessionId) {
+      Alert.alert("Sessão expirada", "Faça login novamente");
+      router.replace("/");
+      return;
     }
+
+    const [profileResponse, analysisResponse] = await Promise.all([
+      fetch(
+        `${API_URL}/me/instagram/profile?session_id=${encodeURIComponent(
+          sessionId
+        )}`
+      ),
+      fetch(
+        `${API_URL}/ia/analyze?session_id=${encodeURIComponent(sessionId)}`
+      ),
+    ]);
+
+    const profileData = await profileResponse.json();
+    const analysisData = await analysisResponse.json();
+
+    if (!profileResponse.ok) {
+      throw new Error(profileData?.error || "Erro ao buscar perfil");
+    }
+
+    if (!analysisResponse.ok) {
+      throw new Error(analysisData?.error || "Erro ao buscar análise");
+    }
+
+    setProfile(profileData);
+    setAnalysis(analysisData);
+
+  } catch (error: any) {
+    console.log("Erro métricas:", error);
+
+    if (error?.message?.includes("Sessão")) {
+      Alert.alert("Sessão expirada", "Faça login novamente");
+      router.replace("/");
+      return;
+    }
+
+    Alert.alert(
+      "Erro",
+      error?.message || "Não foi possível carregar as métricas"
+    );
+
+  } finally {
+    setLoading(false);
+    setRefreshing(false);
   }
+}
 
   function onRefresh() {
     setRefreshing(true);

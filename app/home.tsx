@@ -1,11 +1,11 @@
 import { API_URL } from "@/services/api";
+import { getActiveSessionId } from "@/services/session";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
   Image,
   ScrollView,
@@ -13,7 +13,7 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
-  View,
+  View
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -27,7 +27,6 @@ type InstagramProfile = {
 };
 
 const USER_STORAGE_KEY = "@user_name";
-const SESSION_STORAGE_KEY = "@instagram_session_id";
 
 export default function Home() {
   const router = useRouter();
@@ -41,78 +40,64 @@ export default function Home() {
   }, []);
 
   async function carregarDados() {
-    try {
-      setLoading(true);
+  try {
+    setLoading(true);
 
-      const [savedName, sessionId] = await Promise.all([
-        AsyncStorage.getItem(USER_STORAGE_KEY),
-        AsyncStorage.getItem(SESSION_STORAGE_KEY),
-      ]);
+    const [savedName, sessionId] = await Promise.all([
+      AsyncStorage.getItem(USER_STORAGE_KEY),
+      getActiveSessionId(),
+    ]);
 
-      if (savedName) {
-        setUserName(savedName);
-      }
-
-      if (!sessionId) {
-        setProfile(null);
-        return;
-      }
-
-      const response = await fetch(
-        `${API_URL}/me/instagram/profile?session_id=${encodeURIComponent(sessionId)}`
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data?.error || "Erro ao buscar perfil");
-      }
-
-      setProfile(data);
-    } catch (error: any) {
-      console.log("Erro ao carregar home:", error);
-      Alert.alert("Erro", error?.message || "Não foi possível carregar a home");
-    } finally {
-      setLoading(false);
+    if (savedName) {
+      setUserName(savedName);
     }
+
+    if (!sessionId) {
+      setProfile(null);
+      return;
+    }
+
+    const response = await fetch(
+      `${API_URL}/me/instagram/profile?session_id=${encodeURIComponent(sessionId)}`
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data?.error || "Erro ao buscar perfil");
+    }
+
+    setProfile(data);
+  } catch (error: any) {
+    console.log("Erro ao carregar home:", error);
+    Alert.alert(
+      "Erro",
+      error?.message || "Não foi possível carregar a home"
+    );
+  } finally {
+    setLoading(false);
   }
+}
 
   async function sair() {
-    try {
-      const sessionId = await AsyncStorage.getItem(SESSION_STORAGE_KEY);
+  try {
+    const sessionId = await getActiveSessionId();
 
-      if (sessionId) {
-        await fetch(`${API_URL}/auth/app/logout`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ session_id: sessionId }),
-        });
-      }
-
-      await AsyncStorage.multiRemove([USER_STORAGE_KEY, SESSION_STORAGE_KEY]);
-      router.replace("/");
-    } catch (error) {
-      console.log("Erro ao sair:", error);
+    if (sessionId) {
+      await fetch(`${API_URL}/auth/app/logout`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ session_id: sessionId }),
+      });
     }
-  }
 
-  if (loading) {
-    return (
-      <LinearGradient
-        colors={["#feda75", "#fa7e1e", "#d62976", "#962fbf", "#4f5bd5"]}
-        style={styles.screen}
-      >
-        <SafeAreaView style={styles.safe}>
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#fff" />
-            <Text style={styles.loadingText}>Carregando dados...</Text>
-          </View>
-        </SafeAreaView>
-      </LinearGradient>
-    );
+    router.replace("/");
+  } catch (error) {
+    console.log("Erro ao sair:", error);
   }
+}
 
   return (
     <View style={styles.screen}>

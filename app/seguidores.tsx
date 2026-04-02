@@ -9,13 +9,13 @@ import {
   FlatList,
   Image,
   RefreshControl,
-  SafeAreaView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 type InstagramProfile = {
   id: string;
@@ -49,7 +49,7 @@ const SESSION_STORAGE_KEY = "@instagram_session_id";
 
 export default function SeguidoresScreen() {
   const router = useRouter();
-   
+
   const [profile, setProfile] = useState<InstagramProfile | null>(null);
   const [followers, setFollowers] = useState<UserItem[]>([]);
   const [following, setFollowing] = useState<UserItem[]>([]);
@@ -58,13 +58,13 @@ export default function SeguidoresScreen() {
   const [lastApiFollowing, setLastApiFollowing] = useState<number | null>(null);
   const [apiReferenceLoaded, setApiReferenceLoaded] = useState(false);
   const [comparisonReady, setComparisonReady] = useState(false);
+  const [updateWarningReady, setUpdateWarningReady] = useState(false);
 
   const [initialLoading, setInitialLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
   const [activeTab, setActiveTab] = useState<TabType>("followers");
   const [activeFilter, setActiveFilter] = useState<FilterType>("todos");
-  const [updateWarningReady, setUpdateWarningReady] = useState(false);
 
   useEffect(() => {
     carregarDados();
@@ -79,71 +79,72 @@ export default function SeguidoresScreen() {
   async function getSessionId() {
     return await AsyncStorage.getItem(SESSION_STORAGE_KEY);
   }
-  
+
   async function carregarDados() {
-  try {
-    const sessionId = await getSessionId();
+    try {
+      const sessionId = await getSessionId();
 
-    if (!sessionId) {
-      throw new Error("Sessão não encontrada");
+      if (!sessionId) {
+        throw new Error("Sessão não encontrada");
+      }
+
+      const [
+        profileResponse,
+        savedFollowers,
+        savedFollowing,
+        savedPreviousFollowers,
+        savedLastFollowers,
+        savedLastFollowing,
+        savedComparisonReady,
+        savedUpdateWarningReady,
+      ] = await Promise.all([
+        fetch(
+          `${API_URL}/me/instagram/profile?session_id=${encodeURIComponent(
+            sessionId
+          )}`
+        ),
+        AsyncStorage.getItem(FOLLOWERS_STORAGE_KEY),
+        AsyncStorage.getItem(FOLLOWING_STORAGE_KEY),
+        AsyncStorage.getItem(PREVIOUS_FOLLOWERS_STORAGE_KEY),
+        AsyncStorage.getItem(LAST_API_FOLLOWERS_COUNT_KEY),
+        AsyncStorage.getItem(LAST_API_FOLLOWING_COUNT_KEY),
+        AsyncStorage.getItem(FOLLOWERS_COMPARISON_READY_KEY),
+        AsyncStorage.getItem(UPDATE_WARNING_READY_KEY),
+      ]);
+
+      const profileData = await profileResponse.json();
+
+      if (!profileResponse.ok) {
+        throw new Error(profileData?.error || "Erro ao buscar perfil");
+      }
+
+      setProfile(profileData);
+      setFollowers(savedFollowers ? JSON.parse(savedFollowers) : []);
+      setFollowing(savedFollowing ? JSON.parse(savedFollowing) : []);
+      setPreviousFollowers(
+        savedPreviousFollowers ? JSON.parse(savedPreviousFollowers) : []
+      );
+      setComparisonReady(savedComparisonReady === "true");
+      setUpdateWarningReady(savedUpdateWarningReady === "true");
+
+      const parsedLastFollowers = savedLastFollowers
+        ? Number(savedLastFollowers)
+        : null;
+
+      const parsedLastFollowing = savedLastFollowing
+        ? Number(savedLastFollowing)
+        : null;
+
+      setLastApiFollowers(parsedLastFollowers);
+      setLastApiFollowing(parsedLastFollowing);
+      setApiReferenceLoaded(true);
+    } catch (error) {
+      console.warn("Erro ao carregar tela seguidores:", error);
+    } finally {
+      setInitialLoading(false);
+      setRefreshing(false);
     }
-
-    const [
-      profileResponse,
-      savedFollowers,
-      savedFollowing,
-      savedPreviousFollowers,
-      savedLastFollowers,
-      savedLastFollowing,
-      savedComparisonReady,
-      savedUpdateWarningReady,
-    ] = await Promise.all([
-      fetch(
-        `${API_URL}/me/instagram/profile?session_id=${encodeURIComponent(sessionId || "")}`
-      ),
-      AsyncStorage.getItem(FOLLOWERS_STORAGE_KEY),
-      AsyncStorage.getItem(FOLLOWING_STORAGE_KEY),
-      AsyncStorage.getItem(PREVIOUS_FOLLOWERS_STORAGE_KEY),
-      AsyncStorage.getItem(LAST_API_FOLLOWERS_COUNT_KEY),
-      AsyncStorage.getItem(LAST_API_FOLLOWING_COUNT_KEY),
-      AsyncStorage.getItem(FOLLOWERS_COMPARISON_READY_KEY),
-      AsyncStorage.getItem(UPDATE_WARNING_READY_KEY),
-    ]);
-
-    const profileData = await profileResponse.json();
-
-    if (!profileResponse.ok) {
-      throw new Error(profileData?.error || "Erro ao buscar perfil");
-    }
-
-    setProfile(profileData);
-    setFollowers(savedFollowers ? JSON.parse(savedFollowers) : []);
-    setFollowing(savedFollowing ? JSON.parse(savedFollowing) : []);
-    setPreviousFollowers(
-      savedPreviousFollowers ? JSON.parse(savedPreviousFollowers) : []
-    );
-    setComparisonReady(savedComparisonReady === "true");
-
-    const parsedLastFollowers = savedLastFollowers
-      ? Number(savedLastFollowers)
-      : null;
-
-    const parsedLastFollowing = savedLastFollowing
-      ? Number(savedLastFollowing)
-      : null;
-
-    setLastApiFollowers(parsedLastFollowers);
-    setLastApiFollowing(parsedLastFollowing);
-    setApiReferenceLoaded(true);
-    setUpdateWarningReady(savedUpdateWarningReady === "true");
-
-  } catch (error) {
-    console.warn("Erro ao carregar tela seguidores:", error);
-  } finally {
-    setInitialLoading(false);
-    setRefreshing(false);
   }
-}
 
   function handleRefresh() {
     setRefreshing(true);
@@ -250,21 +251,10 @@ export default function SeguidoresScreen() {
   }, [canCompareFollowersChange, previousFollowers, followers]);
 
   const currentList = useMemo(() => {
-    if (activeFilter === "nao_segue") {
-      return naoSeguemDeVolta;
-    }
-
-    if (activeFilter === "voce_nao_segue") {
-      return seguidoresQueNaoSeguo;
-    }
-
-    if (activeFilter === "deixaram_de_seguir") {
-      return quemDeixouDeSeguir;
-    }
-
-    if (activeFilter === "novos") {
-      return novosSeguidores;
-    }
+    if (activeFilter === "nao_segue") return naoSeguemDeVolta;
+    if (activeFilter === "voce_nao_segue") return seguidoresQueNaoSeguo;
+    if (activeFilter === "deixaram_de_seguir") return quemDeixouDeSeguir;
+    if (activeFilter === "novos") return novosSeguidores;
 
     return activeTab === "followers" ? followers : following;
   }, [
@@ -282,7 +272,6 @@ export default function SeguidoresScreen() {
     if (!search.trim()) return currentList;
 
     const q = search.toLowerCase().trim();
-
     return currentList.filter((item) =>
       item.username.toLowerCase().includes(q)
     );
