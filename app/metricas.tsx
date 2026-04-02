@@ -3,7 +3,7 @@ import { getActiveSessionId } from "@/services/session";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -48,67 +48,79 @@ export default function Metricas() {
   const [profile, setProfile] = useState<InstagramProfile | null>(null);
   const [analysis, setAnalysis] = useState<IAResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingAnalysis, setLoadingAnalysis] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   async function getSessionId() {
-  return await getActiveSessionId();
-}
+    return await getActiveSessionId();
+  }
 
+  useEffect(() => {
+    carregarDados();
+  }, []);
 
   async function carregarDados() {
-  try {
-    const sessionId = await getSessionId();
+    try {
+      const sessionId = await getSessionId();
 
-    if (!sessionId) {
-      Alert.alert("Sessão expirada", "Faça login novamente");
-      router.replace("/");
-      return;
-    }
+      if (!sessionId) {
+        Alert.alert("Sessão expirada", "Faça login novamente");
+        router.replace("/");
+        return;
+      }
 
-    const [profileResponse, analysisResponse] = await Promise.all([
-      fetch(
+      setLoading(true);
+
+      const profileResponse = await fetch(
         `${API_URL}/me/instagram/profile?session_id=${encodeURIComponent(
           sessionId
         )}`
-      ),
-      fetch(
+      );
+
+      const profileData = await profileResponse.json();
+
+      if (!profileResponse.ok) {
+        throw new Error(profileData?.error || "Erro ao buscar perfil");
+      }
+
+      setProfile(profileData);
+      setLoading(false);
+
+      setLoadingAnalysis(true);
+
+      const analysisResponse = await fetch(
         `${API_URL}/ia/analyze?session_id=${encodeURIComponent(sessionId)}`
-      ),
-    ]);
+      );
 
-    const profileData = await profileResponse.json();
-    const analysisData = await analysisResponse.json();
+      const analysisData = await analysisResponse.json();
 
-    if (!profileResponse.ok) {
-      throw new Error(profileData?.error || "Erro ao buscar perfil");
+      if (!analysisResponse.ok) {
+        throw new Error(analysisData?.error || "Erro ao buscar análise");
+      }
+
+      setAnalysis(analysisData);
+    } catch (error: any) {
+      console.log("Erro métricas:", error);
+
+      if (loading) {
+        setLoading(false);
+      }
+
+      if (error?.message?.includes("Sessão")) {
+        Alert.alert("Sessão expirada", "Faça login novamente");
+        router.replace("/");
+        return;
+      }
+
+      Alert.alert(
+        "Erro",
+        error?.message || "Não foi possível carregar as métricas"
+      );
+    } finally {
+      setLoadingAnalysis(false);
+      setRefreshing(false);
     }
-
-    if (!analysisResponse.ok) {
-      throw new Error(analysisData?.error || "Erro ao buscar análise");
-    }
-
-    setProfile(profileData);
-    setAnalysis(analysisData);
-
-  } catch (error: any) {
-    console.log("Erro métricas:", error);
-
-    if (error?.message?.includes("Sessão")) {
-      Alert.alert("Sessão expirada", "Faça login novamente");
-      router.replace("/");
-      return;
-    }
-
-    Alert.alert(
-      "Erro",
-      error?.message || "Não foi possível carregar as métricas"
-    );
-
-  } finally {
-    setLoading(false);
-    setRefreshing(false);
   }
-}
 
   function onRefresh() {
     setRefreshing(true);
@@ -122,7 +134,7 @@ export default function Metricas() {
     return "Baixo";
   }
 
-  if (loading) {
+  if (loading && !profile) {
     return (
       <LinearGradient
         colors={["#feda75", "#fa7e1e", "#d62976", "#962fbf", "#4f5bd5"]}
@@ -185,12 +197,20 @@ export default function Metricas() {
             <Text style={styles.scoreTitle}>Score do Perfil</Text>
 
             <View style={styles.scoreCircle}>
-              <Text style={styles.scoreNumber}>{analysis?.score ?? 0}</Text>
-              <Text style={styles.scoreTotal}>/100</Text>
+              {loadingAnalysis ? (
+                <ActivityIndicator size="large" color="#d62976" />
+              ) : (
+                <>
+                  <Text style={styles.scoreNumber}>{analysis?.score ?? 0}</Text>
+                  <Text style={styles.scoreTotal}>/100</Text>
+                </>
+              )}
             </View>
 
             <Text style={styles.scoreLabel}>
-              {getScoreLabel(analysis?.score ?? 0)}
+              {loadingAnalysis
+                ? "Analisando..."
+                : getScoreLabel(analysis?.score ?? 0)}
             </Text>
           </View>
 
@@ -250,14 +270,20 @@ export default function Metricas() {
                 )
               )
             ) : (
-              <Text style={styles.emptyText}>Nenhum dado de mídia disponível</Text>
+              <Text style={styles.emptyText}>
+                {loadingAnalysis
+                  ? "Carregando análise..."
+                  : "Nenhum dado de mídia disponível"}
+              </Text>
             )}
           </View>
 
           <View style={styles.metricsCard}>
             <Text style={styles.sectionTitle}>Resumo estratégico</Text>
             <Text style={styles.summaryText}>
-              {analysis?.resumo || "Resumo não disponível"}
+              {loadingAnalysis
+                ? "Gerando resumo com IA..."
+                : analysis?.resumo || "Resumo não disponível"}
             </Text>
           </View>
 

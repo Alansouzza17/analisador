@@ -19,11 +19,11 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { API_URL } from "../services/api";
+import { setActiveSessionId } from "../services/session";
 
 WebBrowser.maybeCompleteAuthSession();
 
 const USER_STORAGE_KEY = "@user_name";
-const SESSION_STORAGE_KEY = "@instagram_session_id";
 const REDIRECT_URI = Linking.createURL("instagram-auth");
 
 export default function Login() {
@@ -51,18 +51,13 @@ export default function Login() {
 
   async function verificarLogin() {
     try {
-      const [savedName, savedSessionId] = await Promise.all([
-        AsyncStorage.getItem(USER_STORAGE_KEY),
-        AsyncStorage.getItem(SESSION_STORAGE_KEY),
-      ]);
+      const savedName = await AsyncStorage.getItem(USER_STORAGE_KEY);
 
       if (savedName) {
         setNome(savedName);
       }
 
-      if (savedName && savedSessionId) {
-        router.replace("/home");
-      }
+      // Removido o redirecionamento automático para home
     } catch (error) {
       console.log("Erro ao verificar login:", error);
     } finally {
@@ -82,10 +77,8 @@ export default function Login() {
     if (success === "true" && typeof sessionId === "string") {
       const nomeSalvo = nome.trim() || "Instagram";
 
-      await AsyncStorage.multiSet([
-        [USER_STORAGE_KEY, nomeSalvo],
-        [SESSION_STORAGE_KEY, sessionId],
-      ]);
+      await AsyncStorage.setItem(USER_STORAGE_KEY, nomeSalvo);
+      await setActiveSessionId(sessionId);
 
       setSubmitting(false);
       router.replace("/home");
@@ -114,7 +107,6 @@ export default function Login() {
     try {
       setSubmitting(true);
       await AsyncStorage.setItem(USER_STORAGE_KEY, nome.trim());
-      await AsyncStorage.removeItem(SESSION_STORAGE_KEY);
       router.replace("/home");
     } catch (error) {
       console.log("Erro ao salvar usuário:", error);

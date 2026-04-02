@@ -1,4 +1,5 @@
 import { API_URL } from "@/services/api";
+import { getActiveSessionId } from "@/services/session";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { LinearGradient } from "expo-linear-gradient";
@@ -45,7 +46,6 @@ const LAST_API_FOLLOWERS_COUNT_KEY = "@last_api_followers_count";
 const LAST_API_FOLLOWING_COUNT_KEY = "@last_api_following_count";
 const FOLLOWERS_COMPARISON_READY_KEY = "@followers_comparison_ready";
 const UPDATE_WARNING_READY_KEY = "@update_warning_ready";
-const SESSION_STORAGE_KEY = "@instagram_session_id";
 
 export default function SeguidoresScreen() {
   const router = useRouter();
@@ -77,16 +77,20 @@ export default function SeguidoresScreen() {
   );
 
   async function getSessionId() {
-    return await AsyncStorage.getItem(SESSION_STORAGE_KEY);
+    return await getActiveSessionId();
   }
 
   async function carregarDados() {
     try {
       const sessionId = await getSessionId();
 
+      console.log("SEGUIDORES SESSION ID:", sessionId);
+
       if (!sessionId) {
         throw new Error("Sessão não encontrada");
       }
+
+      setInitialLoading(true);
 
       const [
         profileResponse,
@@ -113,6 +117,8 @@ export default function SeguidoresScreen() {
       ]);
 
       const profileData = await profileResponse.json();
+
+      console.log("SEGUIDORES PROFILE RESPONSE:", profileData);
 
       if (!profileResponse.ok) {
         throw new Error(profileData?.error || "Erro ao buscar perfil");
@@ -222,7 +228,6 @@ export default function SeguidoresScreen() {
     if (!comparisonReady) return false;
     if (previousFollowers.length === 0) return false;
     if (followers.length === 0) return false;
-
     return true;
   }, [comparisonReady, previousFollowers.length, followers.length]);
 
@@ -372,9 +377,7 @@ export default function SeguidoresScreen() {
                         size={18}
                         color="#B45309"
                       />
-                      <Text style={styles.updateTitle}>
-                        Atualize sua lista
-                      </Text>
+                      <Text style={styles.updateTitle}>Atualize sua lista</Text>
                     </View>
 
                     <Text style={styles.updateText}>
@@ -653,9 +656,7 @@ export default function SeguidoresScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: "#F4F4F6" },
-
   header: { paddingBottom: 22 },
-
   headerContent: {
     paddingTop: 10,
     paddingHorizontal: 20,
@@ -663,14 +664,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
   },
-
   headerLeft: {
     flexDirection: "row",
     alignItems: "center",
     flex: 1,
     marginRight: 12,
   },
-
   backButton: {
     width: 60,
     height: 60,
@@ -680,20 +679,17 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginRight: 14,
   },
-
   headerTitle: {
     fontSize: 22,
     fontWeight: "800",
     color: "#151515",
     marginBottom: 2,
   },
-
   headerSubtitle: {
     fontSize: 13,
     color: "#1F1F1F",
     opacity: 0.85,
   },
-
   headerIcon: {
     width: 68,
     height: 68,
@@ -705,13 +701,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     overflow: "hidden",
   },
-
   headerIconText: { fontSize: 28 },
-
   headerAvatar: { width: "100%", height: "100%" },
-
   content: { flex: 1, paddingHorizontal: 20, paddingTop: 18 },
-
   infoWarning: {
     backgroundColor: "#EFF6FF",
     borderRadius: 18,
@@ -722,7 +714,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#BFDBFE",
   },
-
   infoWarningText: {
     flex: 1,
     marginLeft: 8,
@@ -731,7 +722,6 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     fontWeight: "500",
   },
-
   updateCard: {
     backgroundColor: "#FFF7ED",
     borderRadius: 18,
@@ -740,26 +730,22 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#F59E0B",
   },
-
   updateHeader: {
     flexDirection: "row",
     alignItems: "center",
     marginBottom: 8,
   },
-
   updateTitle: {
     marginLeft: 8,
     fontSize: 14,
     fontWeight: "800",
     color: "#9A3412",
   },
-
   updateText: {
     fontSize: 13,
     color: "#9A3412",
     lineHeight: 19,
   },
-
   updateDetails: {
     marginTop: 8,
     fontSize: 13,
@@ -767,7 +753,6 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     lineHeight: 19,
   },
-
   updateButton: {
     marginTop: 12,
     backgroundColor: "#fff",
@@ -778,18 +763,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#F59E0B",
   },
-
   updateButtonText: {
     color: "#B45309",
     fontWeight: "700",
   },
-
   statsRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     marginBottom: 18,
   },
-
   statCard: {
     width: "31.5%",
     backgroundColor: "#fff",
@@ -803,7 +785,6 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 2,
   },
-
   statLabel: {
     fontSize: 12,
     color: "#777",
@@ -811,19 +792,16 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     textAlign: "center",
   },
-
   statValue: {
     fontSize: 20,
     fontWeight: "800",
     color: "#1E1E1E",
   },
-
   secondaryStatsRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     marginBottom: 14,
   },
-
   secondaryCard: {
     width: "48.5%",
     backgroundColor: "#fff",
@@ -836,34 +814,28 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 2,
   },
-
   secondaryLabel: {
     fontSize: 13,
     color: "#777",
     marginBottom: 6,
     fontWeight: "700",
   },
-
   secondaryValue: {
     fontSize: 20,
     color: "#d62976",
     fontWeight: "800",
   },
-
   cardActive: {
     borderWidth: 2,
     borderColor: "#d62976",
     backgroundColor: "#FFF0F7",
   },
-
   cardActiveLabel: {
     color: "#b81f65",
   },
-
   cardActiveValue: {
     color: "#b81f65",
   },
-
   searchBox: {
     backgroundColor: "#fff",
     borderRadius: 20,
@@ -878,14 +850,12 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 2,
   },
-
   searchInput: {
     flex: 1,
     marginLeft: 10,
     fontSize: 15,
     color: "#1E1E1E",
   },
-
   clearFilter: {
     alignSelf: "center",
     backgroundColor: "#fff",
@@ -896,19 +866,16 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#d62976",
   },
-
   clearFilterText: {
     color: "#d62976",
     fontWeight: "700",
     fontSize: 14,
   },
-
   filtersRow: {
     flexDirection: "row",
     marginBottom: 14,
     justifyContent: "space-between",
   },
-
   filterButton: {
     flex: 1,
     backgroundColor: "#fff",
@@ -919,22 +886,18 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#ECECEC",
   },
-
   filterButtonActive: {
     backgroundColor: "#E1267D",
     borderColor: "#E1267D",
   },
-
   filterText: {
     fontSize: 13,
     fontWeight: "700",
     color: "#555",
   },
-
   filterTextActive: {
     color: "#fff",
   },
-
   importButton: {
     backgroundColor: "#fff",
     borderRadius: 18,
@@ -944,15 +907,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#E5E5E5",
   },
-
   importButtonText: {
     color: "#d62976",
     fontSize: 15,
     fontWeight: "800",
   },
-
   listContent: { paddingBottom: 20 },
-
   userCard: {
     flexDirection: "row",
     backgroundColor: "#fff",
@@ -966,7 +926,6 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 2,
   },
-
   userAvatar: {
     width: 52,
     height: 52,
@@ -976,34 +935,28 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginRight: 14,
   },
-
   userAvatarText: {
     color: "#d62976",
     fontWeight: "800",
     fontSize: 18,
   },
-
   userInfo: { flex: 1 },
-
   userName: {
     fontSize: 15,
     fontWeight: "800",
     color: "#111",
   },
-
   center: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
     paddingTop: 60,
   },
-
   loadingText: {
     marginTop: 10,
     color: "#333",
     fontSize: 15,
   },
-
   emptyBox: {
     backgroundColor: "#fff",
     borderRadius: 24,
@@ -1011,14 +964,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginTop: 10,
   },
-
   emptyTitle: {
     fontSize: 16,
     fontWeight: "800",
     color: "#1E1E1E",
     marginBottom: 6,
   },
-
   emptyText: {
     fontSize: 14,
     color: "#666",
