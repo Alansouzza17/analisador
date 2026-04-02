@@ -1,5 +1,8 @@
 import { API_URL } from "@/services/api";
-import { getActiveSessionId } from "@/services/session";
+import {
+  getActiveSessionId,
+  removeConnectedAccount,
+} from "@/services/session";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { LinearGradient } from "expo-linear-gradient";
@@ -79,21 +82,27 @@ export default function Home() {
   }
 }
 
-  async function sair() {
+async function sair() {
   try {
     const sessionId = await getActiveSessionId();
 
-    if (sessionId) {
-      await fetch(`${API_URL}/auth/app/logout`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ session_id: sessionId }),
-      });
+    if (!sessionId) {
+      router.replace("/");
+      return;
     }
 
+    await fetch(`${API_URL}/auth/app/logout`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ session_id: sessionId }),
+    });
+
+    await removeConnectedAccount(sessionId);
+
     router.replace("/");
+
   } catch (error) {
     console.log("Erro ao sair:", error);
   }
