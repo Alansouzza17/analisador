@@ -99,31 +99,38 @@ export default function Home() {
   }
 
   async function sair() {
-    try {
-      const sessionId = await getActiveSessionId();
+  try {
+    const sessionId = await getActiveSessionId();
 
-      if (sessionId) {
-        try {
-          await fetch(`${API_URL}/auth/app/logout`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ session_id: sessionId }),
-          });
-        } catch (error) {
-          console.log("Erro ao avisar logout no backend:", error);
-        }
-
-        await removeConnectedAccount(sessionId);
+    if (sessionId) {
+      try {
+        await fetch(`${API_URL}/auth/app/logout`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ session_id: sessionId }),
+        });
+      } catch (error) {
+        console.log("Erro ao avisar logout no backend:", error);
       }
 
-      router.replace("/");
-    } catch (error) {
-      console.log("Erro ao sair:", error);
-      router.replace("/");
+      await removeConnectedAccount(sessionId);
     }
+
+    await AsyncStorage.removeItem(USER_STORAGE_KEY);
+
+    setProfile(null);
+    setHasInstagramConnected(false);
+    setUserName("");
+
+    router.replace("/");
+  } catch (error) {
+    console.log("Erro ao sair:", error);
+    await AsyncStorage.removeItem(USER_STORAGE_KEY);
+    router.replace("/");
   }
+}
 
   return (
     <View style={styles.screen}>
