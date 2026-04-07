@@ -16,7 +16,7 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
-  View
+  View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -37,76 +37,93 @@ export default function Home() {
   const [userName, setUserName] = useState("");
   const [profile, setProfile] = useState<InstagramProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [hasInstagramConnected, setHasInstagramConnected] = useState(false);
 
   useEffect(() => {
     carregarDados();
   }, []);
 
   async function carregarDados() {
-  try {
-    setLoading(true);
+    try {
+      setLoading(true);
 
-    const [savedName, sessionId] = await Promise.all([
-      AsyncStorage.getItem(USER_STORAGE_KEY),
-      getActiveSessionId(),
-    ]);
+      const [savedName, sessionId] = await Promise.all([
+        AsyncStorage.getItem(USER_STORAGE_KEY),
+        getActiveSessionId(),
+      ]);
 
-    if (savedName) {
-      setUserName(savedName);
-    }
+      if (savedName) {
+        setUserName(savedName);
+      }
 
-    if (!sessionId) {
+      if (!sessionId) {
+        setProfile(null);
+        setHasInstagramConnected(false);
+        return;
+      }
+
+      setHasInstagramConnected(true);
+
+      const response = await fetch(
+        `${API_URL}/me/instagram/profile?session_id=${encodeURIComponent(
+          sessionId
+        )}`
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || "Erro ao buscar perfil");
+      }
+
+      setProfile(data);
+    } catch (error: any) {
+      console.log("Erro ao carregar home:", error);
       setProfile(null);
+      setHasInstagramConnected(false);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function abrirRecursoProtegido(path: string) {
+    if (!hasInstagramConnected) {
+      Alert.alert(
+        "Instagram necessário",
+        "Conecte sua conta do Instagram para usar esta função."
+      );
       return;
     }
 
-    const response = await fetch(
-      `${API_URL}/me/instagram/profile?session_id=${encodeURIComponent(sessionId)}`
-    );
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data?.error || "Erro ao buscar perfil");
-    }
-
-    setProfile(data);
-  } catch (error: any) {
-    console.log("Erro ao carregar home:", error);
-    Alert.alert(
-      "Erro",
-      error?.message || "Não foi possível carregar a home"
-    );
-  } finally {
-    setLoading(false);
+    router.push(path as any);
   }
-}
 
-async function sair() {
-  try {
-    const sessionId = await getActiveSessionId();
+  async function sair() {
+    try {
+      const sessionId = await getActiveSessionId();
 
-    if (!sessionId) {
+      if (sessionId) {
+        try {
+          await fetch(`${API_URL}/auth/app/logout`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ session_id: sessionId }),
+          });
+        } catch (error) {
+          console.log("Erro ao avisar logout no backend:", error);
+        }
+
+        await removeConnectedAccount(sessionId);
+      }
+
       router.replace("/");
-      return;
+    } catch (error) {
+      console.log("Erro ao sair:", error);
+      router.replace("/");
     }
-
-    await fetch(`${API_URL}/auth/app/logout`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ session_id: sessionId }),
-    });
-
-    await removeConnectedAccount(sessionId);
-
-    router.replace("/");
-
-  } catch (error) {
-    console.log("Erro ao sair:", error);
   }
-}
 
   return (
     <View style={styles.screen}>
@@ -126,7 +143,9 @@ async function sair() {
               </Text>
               <Text style={styles.headerTitle}>Painel do Instagram</Text>
               <Text style={styles.headerSubtitle}>
-                Dados reais conectados ao seu backend
+                {hasInstagramConnected
+                  ? "Dados reais conectados ao seu backend"
+                  : "Use o app normalmente e conecte o Instagram quando quiser"}
               </Text>
             </View>
 
@@ -158,46 +177,68 @@ async function sair() {
                 />
               ) : (
                 <View style={styles.profileImageFallback}>
-                  <Text style={styles.profileImageFallbackText}>@</Text>
+                  <Ionicons name="logo-instagram" size={28} color="#d62976" />
                 </View>
               )}
 
               <View style={styles.profileInfo}>
                 <Text style={styles.username}>
-                  @{profile?.username || "instagram"}
+                  {hasInstagramConnected
+                    ? `@${profile?.username || "instagram"}`
+                    : "Nenhuma conta conectada"}
                 </Text>
-                <Text style={styles.profileStatus}>Conta conectada com sucesso</Text>
+
+                <Text style={styles.profileStatus}>
+                  {hasInstagramConnected
+                    ? "Conta conectada com sucesso"
+                    : "Conecte sua conta para desbloquear recursos automáticos"}
+                </Text>
               </View>
             </View>
 
             <View style={styles.statsRow}>
               <View style={styles.statBox}>
                 <Text style={styles.statNumber}>
-                  {profile?.followers_count ?? 0}
+                  {hasInstagramConnected ? profile?.followers_count ?? 0 : "--"}
                 </Text>
                 <Text style={styles.statLabel}>Seguidores</Text>
               </View>
 
               <View style={styles.statBox}>
                 <Text style={styles.statNumber}>
-                  {profile?.follows_count ?? 0}
+                  {hasInstagramConnected ? profile?.follows_count ?? 0 : "--"}
                 </Text>
                 <Text style={styles.statLabel}>Seguindo</Text>
               </View>
 
               <View style={styles.statBox}>
-                <Text style={styles.statNumber}>{profile?.media_count ?? 0}</Text>
+                <Text style={styles.statNumber}>
+                  {hasInstagramConnected ? profile?.media_count ?? 0 : "--"}
+                </Text>
                 <Text style={styles.statLabel}>Posts</Text>
               </View>
             </View>
+
+            {!hasInstagramConnected && (
+              <TouchableOpacity
+                style={styles.connectButton}
+                onPress={() => router.push("/contas")}
+              >
+                <Ionicons name="link-outline" size={18} color="#fff" />
+                <Text style={styles.connectButtonText}>Conectar Instagram</Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           <Text style={styles.sectionTitle}>Ações rápidas</Text>
 
           <View style={styles.actionsGrid}>
             <TouchableOpacity
-              style={styles.actionCard}
-              onPress={() => router.push("/profile")}
+              style={[
+                styles.actionCard,
+                !hasInstagramConnected && styles.actionCardDisabled,
+              ]}
+              onPress={() => abrirRecursoProtegido("/profile")}
             >
               <View style={styles.actionIconBox}>
                 <Ionicons name="person-outline" size={24} color="#d62976" />
@@ -209,8 +250,11 @@ async function sair() {
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={styles.actionCard}
-              onPress={() => router.push("/analysis")}
+              style={[
+                styles.actionCard,
+                !hasInstagramConnected && styles.actionCardDisabled,
+              ]}
+              onPress={() => abrirRecursoProtegido("/analysis")}
             >
               <View style={styles.actionIconBox}>
                 <Ionicons name="analytics-outline" size={24} color="#d62976" />
@@ -226,7 +270,11 @@ async function sair() {
               onPress={() => router.push("/contas")}
             >
               <View style={styles.actionIconBox}>
-                <Ionicons name="people-circle-outline" size={24} color="#d62976" />
+                <Ionicons
+                  name="people-circle-outline"
+                  size={24}
+                  color="#d62976"
+                />
               </View>
               <Text style={styles.actionTitle}>Contas</Text>
               <Text style={styles.actionSubtitle}>
@@ -256,16 +304,23 @@ async function sair() {
               </View>
               <Text style={styles.actionTitle}>Seguidores</Text>
               <Text style={styles.actionSubtitle}>
-                Veja métricas e organização do perfil
+                Veja listas, comparações e organização do perfil
               </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={styles.actionCard}
-              onPress={() => router.push("/metricas")}
+              style={[
+                styles.actionCard,
+                !hasInstagramConnected && styles.actionCardDisabled,
+              ]}
+              onPress={() => abrirRecursoProtegido("/metricas")}
             >
               <View style={styles.actionIconBox}>
-                <Ionicons name="stats-chart-outline" size={24} color="#d62976" />
+                <Ionicons
+                  name="stats-chart-outline"
+                  size={24}
+                  color="#d62976"
+                />
               </View>
               <Text style={styles.actionTitle}>Métricas</Text>
               <Text style={styles.actionSubtitle}>
@@ -278,7 +333,11 @@ async function sair() {
               onPress={() => router.push("/importar-seguidores")}
             >
               <View style={styles.actionIconBox}>
-                <Ionicons name="document-attach-outline" size={24} color="#d62976" />
+                <Ionicons
+                  name="document-attach-outline"
+                  size={24}
+                  color="#d62976"
+                />
               </View>
               <Text style={styles.actionTitle}>Importar</Text>
               <Text style={styles.actionSubtitle}>
@@ -374,19 +433,6 @@ const styles = StyleSheet.create({
     paddingBottom: 36,
   },
 
-  loadingContainer: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  loadingText: {
-    marginTop: 12,
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "700",
-  },
-
   profileCard: {
     backgroundColor: "#fff",
     borderRadius: 30,
@@ -420,12 +466,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     marginRight: 14,
-  },
-
-  profileImageFallbackText: {
-    fontSize: 28,
-    fontWeight: "800",
-    color: "#d62976",
   },
 
   profileInfo: {
@@ -471,6 +511,23 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
 
+  connectButton: {
+    marginTop: 18,
+    backgroundColor: "#d62976",
+    borderRadius: 18,
+    paddingVertical: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+  },
+
+  connectButtonText: {
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: "800",
+    marginLeft: 8,
+  },
+
   sectionTitle: {
     fontSize: 20,
     fontWeight: "800",
@@ -495,6 +552,10 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     shadowRadius: 10,
     elevation: 2,
+  },
+
+  actionCardDisabled: {
+    opacity: 0.55,
   },
 
   actionIconBox: {

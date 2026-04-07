@@ -34,18 +34,48 @@ export async function setActiveSessionId(sessionId: string) {
   await AsyncStorage.setItem(ACTIVE_ACCOUNT_STORAGE_KEY, sessionId);
 }
 
+export async function clearActiveSessionId() {
+  await AsyncStorage.removeItem(ACTIVE_ACCOUNT_STORAGE_KEY);
+}
+
+export async function getActiveConnectedAccount(): Promise<ConnectedAccount | null> {
+  const [accounts, activeSessionId] = await Promise.all([
+    getConnectedAccounts(),
+    getActiveSessionId(),
+  ]);
+
+  if (!activeSessionId) return null;
+
+  return (
+    accounts.find((account) => account.sessionId === activeSessionId) ?? null
+  );
+}
+
+export async function hasConnectedInstagramAccount(): Promise<boolean> {
+  const activeAccount = await getActiveConnectedAccount();
+  return !!activeAccount;
+}
+
 export async function removeConnectedAccount(sessionId: string) {
   const accounts = await getConnectedAccounts();
   const updated = accounts.filter((account) => account.sessionId !== sessionId);
+
   await AsyncStorage.setItem(ACCOUNTS_STORAGE_KEY, JSON.stringify(updated));
 
   const active = await getActiveSessionId();
+
   if (active === sessionId) {
     const nextActive = updated.length > 0 ? updated[0].sessionId : null;
+
     if (nextActive) {
       await setActiveSessionId(nextActive);
     } else {
-      await AsyncStorage.removeItem(ACTIVE_ACCOUNT_STORAGE_KEY);
+      await clearActiveSessionId();
     }
   }
+}
+
+export async function clearAllConnectedAccounts() {
+  await AsyncStorage.removeItem(ACCOUNTS_STORAGE_KEY);
+  await clearActiveSessionId();
 }

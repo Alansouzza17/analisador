@@ -192,13 +192,14 @@ export default function ImportarSeguidores() {
           style: "destructive",
           onPress: async () => {
             await AsyncStorage.multiRemove([
-              FOLLOWERS_STORAGE_KEY,
-              FOLLOWING_STORAGE_KEY,
-              PREVIOUS_FOLLOWERS_STORAGE_KEY,
-              LAST_API_FOLLOWERS_COUNT_KEY,
-              LAST_API_FOLLOWING_COUNT_KEY,
-              FOLLOWERS_COMPARISON_READY_KEY,
-            ]);
+  FOLLOWERS_STORAGE_KEY,
+  FOLLOWING_STORAGE_KEY,
+  PREVIOUS_FOLLOWERS_STORAGE_KEY,
+  LAST_API_FOLLOWERS_COUNT_KEY,
+  LAST_API_FOLLOWING_COUNT_KEY,
+  FOLLOWERS_COMPARISON_READY_KEY,
+  UPDATE_WARNING_READY_KEY,
+]);
 
             setUsers([]);
             setFileName("");
@@ -210,37 +211,50 @@ export default function ImportarSeguidores() {
   }
 
   async function enviarParaAbaSeguidores() {
-    if (users.length === 0) {
-      Alert.alert("Importe uma lista primeiro");
-      return;
-    }
+  if (users.length === 0) {
+    Alert.alert("Importe uma lista primeiro");
+    return;
+  }
 
-    try {
-      const sessionId = await getActiveSessionId();
+  try {
+    const sessionId = await getActiveSessionId();
 
-      const profileFetchUrl = sessionId
-        ? `${API_URL}/me/instagram/profile?session_id=${encodeURIComponent(sessionId)}`
-        : `${API_URL}/me/instagram/profile`;
+    // Se tiver Instagram conectado, salva a referência da API
+    if (sessionId) {
+      try {
+        const response = await fetch(
+          `${API_URL}/me/instagram/profile?session_id=${encodeURIComponent(
+            sessionId
+          )}`
+        );
 
-      const response = await fetch(profileFetchUrl);
+        if (response.ok) {
+          const profile = await response.json();
 
-      if (!response.ok) {
-        throw new Error("Erro ao buscar perfil após importação");
+          await AsyncStorage.multiSet([
+            [LAST_API_FOLLOWERS_COUNT_KEY, String(profile.followers_count)],
+            [LAST_API_FOLLOWING_COUNT_KEY, String(profile.follows_count)],
+            [UPDATE_WARNING_READY_KEY, "true"],
+          ]);
+        }
+      } catch (error) {
+        console.log("Erro ao salvar referência da API:", error);
       }
-
-      const profile = await response.json();
-
-      await AsyncStorage.multiSet([
-        [LAST_API_FOLLOWERS_COUNT_KEY, String(profile.followers_count)],
-        [LAST_API_FOLLOWING_COUNT_KEY, String(profile.follows_count)],
-        [UPDATE_WARNING_READY_KEY, "true"],
+    } else {
+      // Sem Instagram conectado, desativa o aviso automático
+      await AsyncStorage.multiRemove([
+        LAST_API_FOLLOWERS_COUNT_KEY,
+        LAST_API_FOLLOWING_COUNT_KEY,
+        UPDATE_WARNING_READY_KEY,
       ]);
-    } catch (error) {
-      console.log(error);
     }
 
     router.replace("/seguidores");
+  } catch (error) {
+    console.log(error);
+    router.replace("/seguidores");
   }
+}
 
   return (
     <LinearGradient

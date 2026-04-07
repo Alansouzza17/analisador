@@ -59,8 +59,8 @@ export default function ContasScreen() {
     if (updatedAccounts.length > 0) {
       await setActiveSessionId(updatedAccounts[0].sessionId);
     } else {
-      router.replace("/");
-      return;
+      // Nenhuma conta conectada — continua no app normalmente
+      setActiveSession(null);
     }
   }
 
@@ -83,6 +83,18 @@ export default function ContasScreen() {
           </View>
         </SafeAreaView>
       </LinearGradient>
+
+      {accounts.length === 0 && (
+  <View style={styles.emptyBox}>
+    <Text style={styles.emptyTitle}>
+      Nenhuma conta conectada
+    </Text>
+
+    <Text style={styles.emptyText}>
+      Você pode usar o app normalmente e conectar uma conta depois.
+    </Text>
+  </View>
+)}
 
       <FlatList
         contentContainerStyle={styles.list}
@@ -132,7 +144,7 @@ export default function ContasScreen() {
         ListFooterComponent={
           <TouchableOpacity
             style={styles.addButton}
-            onPress={() => router.replace("/")}
+            onPress={() => router.push("/")}
           >
             <Text style={styles.addButtonText}>Conectar nova conta</Text>
           </TouchableOpacity>
@@ -238,4 +250,23 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "800",
   },
+  emptyBox: {
+  backgroundColor: "#fff",
+  borderRadius: 20,
+  padding: 20,
+  margin: 20,
+},
+
+emptyTitle: {
+  fontSize: 16,
+  fontWeight: "800",
+  color: "#1E1E1E",
+  marginBottom: 6,
+},
+
+emptyText: {
+  fontSize: 14,
+  color: "#666",
+  lineHeight: 20,
+},
 });

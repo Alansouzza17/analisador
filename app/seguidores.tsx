@@ -80,77 +80,80 @@ export default function SeguidoresScreen() {
     return await getActiveSessionId();
   }
 
-  async function carregarDados() {
-    try {
-      const sessionId = await getSessionId();
+ async function carregarDados() {
+  try {
+    const sessionId = await getSessionId();
 
-      console.log("SEGUIDORES SESSION ID:", sessionId);
+    console.log("SEGUIDORES SESSION ID:", sessionId);
 
-      if (!sessionId) {
-        throw new Error("Sessão não encontrada");
-      }
+    setInitialLoading(true);
 
-      setInitialLoading(true);
+    const [
+      savedFollowers,
+      savedFollowing,
+      savedPreviousFollowers,
+      savedLastFollowers,
+      savedLastFollowing,
+      savedComparisonReady,
+      savedUpdateWarningReady,
+    ] = await Promise.all([
+      AsyncStorage.getItem(FOLLOWERS_STORAGE_KEY),
+      AsyncStorage.getItem(FOLLOWING_STORAGE_KEY),
+      AsyncStorage.getItem(PREVIOUS_FOLLOWERS_STORAGE_KEY),
+      AsyncStorage.getItem(LAST_API_FOLLOWERS_COUNT_KEY),
+      AsyncStorage.getItem(LAST_API_FOLLOWING_COUNT_KEY),
+      AsyncStorage.getItem(FOLLOWERS_COMPARISON_READY_KEY),
+      AsyncStorage.getItem(UPDATE_WARNING_READY_KEY),
+    ]);
 
-      const [
-        profileResponse,
-        savedFollowers,
-        savedFollowing,
-        savedPreviousFollowers,
-        savedLastFollowers,
-        savedLastFollowing,
-        savedComparisonReady,
-        savedUpdateWarningReady,
-      ] = await Promise.all([
-        fetch(
-          `${API_URL}/me/instagram/profile?session_id=${encodeURIComponent(
-            sessionId
-          )}`
-        ),
-        AsyncStorage.getItem(FOLLOWERS_STORAGE_KEY),
-        AsyncStorage.getItem(FOLLOWING_STORAGE_KEY),
-        AsyncStorage.getItem(PREVIOUS_FOLLOWERS_STORAGE_KEY),
-        AsyncStorage.getItem(LAST_API_FOLLOWERS_COUNT_KEY),
-        AsyncStorage.getItem(LAST_API_FOLLOWING_COUNT_KEY),
-        AsyncStorage.getItem(FOLLOWERS_COMPARISON_READY_KEY),
-        AsyncStorage.getItem(UPDATE_WARNING_READY_KEY),
-      ]);
+    setFollowers(savedFollowers ? JSON.parse(savedFollowers) : []);
+    setFollowing(savedFollowing ? JSON.parse(savedFollowing) : []);
+    setPreviousFollowers(
+      savedPreviousFollowers ? JSON.parse(savedPreviousFollowers) : []
+    );
+
+    setComparisonReady(savedComparisonReady === "true");
+    setUpdateWarningReady(savedUpdateWarningReady === "true");
+
+    const parsedLastFollowers = savedLastFollowers
+      ? Number(savedLastFollowers)
+      : null;
+
+    const parsedLastFollowing = savedLastFollowing
+      ? Number(savedLastFollowing)
+      : null;
+
+    setLastApiFollowers(parsedLastFollowers);
+    setLastApiFollowing(parsedLastFollowing);
+    setApiReferenceLoaded(true);
+
+    // 🔹 Só busca API se tiver Instagram conectado
+    if (sessionId) {
+      const profileResponse = await fetch(
+        `${API_URL}/me/instagram/profile?session_id=${encodeURIComponent(
+          sessionId
+        )}`
+      );
 
       const profileData = await profileResponse.json();
 
       console.log("SEGUIDORES PROFILE RESPONSE:", profileData);
 
-      if (!profileResponse.ok) {
-        throw new Error(profileData?.error || "Erro ao buscar perfil");
+      if (profileResponse.ok) {
+        setProfile(profileData);
       }
-
-      setProfile(profileData);
-      setFollowers(savedFollowers ? JSON.parse(savedFollowers) : []);
-      setFollowing(savedFollowing ? JSON.parse(savedFollowing) : []);
-      setPreviousFollowers(
-        savedPreviousFollowers ? JSON.parse(savedPreviousFollowers) : []
-      );
-      setComparisonReady(savedComparisonReady === "true");
-      setUpdateWarningReady(savedUpdateWarningReady === "true");
-
-      const parsedLastFollowers = savedLastFollowers
-        ? Number(savedLastFollowers)
-        : null;
-
-      const parsedLastFollowing = savedLastFollowing
-        ? Number(savedLastFollowing)
-        : null;
-
-      setLastApiFollowers(parsedLastFollowers);
-      setLastApiFollowing(parsedLastFollowing);
-      setApiReferenceLoaded(true);
-    } catch (error) {
-      console.warn("Erro ao carregar tela seguidores:", error);
-    } finally {
-      setInitialLoading(false);
-      setRefreshing(false);
+    } else {
+      // Sem Instagram conectado
+      setProfile(null);
     }
+
+  } catch (error) {
+    console.warn("Erro ao carregar tela seguidores:", error);
+  } finally {
+    setInitialLoading(false);
+    setRefreshing(false);
   }
+}
 
   function handleRefresh() {
     setRefreshing(true);
@@ -316,7 +319,7 @@ export default function SeguidoresScreen() {
             <View>
               <Text style={styles.headerTitle}>Seguidores</Text>
               <Text style={styles.headerSubtitle}>
-                @{profile?.username || "instagram"}
+              {profile?.username ? `@${profile.username}` : "Modo manual"}
               </Text>
             </View>
           </View>
@@ -403,21 +406,21 @@ export default function SeguidoresScreen() {
                   <View style={styles.statCard}>
                     <Text style={styles.statLabel}>Seguidores API</Text>
                     <Text style={styles.statValue}>
-                      {profile?.followers_count ?? 0}
+                      {profile?.followers_count ?? "--"}
                     </Text>
                   </View>
 
                   <View style={styles.statCard}>
                     <Text style={styles.statLabel}>Seguindo API</Text>
                     <Text style={styles.statValue}>
-                      {profile?.follows_count ?? 0}
+                      {profile?.follows_count ?? "--"}
                     </Text>
                   </View>
 
                   <View style={styles.statCard}>
                     <Text style={styles.statLabel}>Posts</Text>
                     <Text style={styles.statValue}>
-                      {profile?.media_count ?? 0}
+                      {profile?.media_count ?? "--"}
                     </Text>
                   </View>
                 </View>

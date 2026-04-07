@@ -53,11 +53,11 @@ export default function Login() {
     try {
       const savedName = await AsyncStorage.getItem(USER_STORAGE_KEY);
 
-      if (savedName) {
+      if (savedName && savedName.trim()) {
         setNome(savedName);
+        router.replace("/home");
+        return;
       }
-
-      // Removido o redirecionamento automático para home
     } catch (error) {
       console.log("Erro ao verificar login:", error);
     } finally {
@@ -65,44 +65,47 @@ export default function Login() {
     }
   }
 
- async function handleDeepLink(url: string) {
-  try {
-    console.log("DEEP LINK URL:", url);
+  async function handleDeepLink(url: string) {
+    try {
+      console.log("DEEP LINK URL:", url);
 
-    const parsed = Linking.parse(url);
-    const success = parsed.queryParams?.success;
-    const sessionId = parsed.queryParams?.session_id;
-    const error = parsed.queryParams?.error;
+      const parsed = Linking.parse(url);
+      const success = parsed.queryParams?.success;
+      const sessionId = parsed.queryParams?.session_id;
+      const error = parsed.queryParams?.error;
 
-    if (success === "true" && typeof sessionId === "string") {
-      const nomeSalvo = nome.trim() || "Instagram";
+      if (success === "true" && typeof sessionId === "string") {
+        const nomeSalvo = nome.trim() || "Usuário";
 
-      await AsyncStorage.setItem(USER_STORAGE_KEY, nomeSalvo);
-      await setActiveSessionId(sessionId);
+        await AsyncStorage.setItem(USER_STORAGE_KEY, nomeSalvo);
+        await setActiveSessionId(sessionId);
+
+        setSubmitting(false);
+        router.replace("/home");
+        return;
+      }
+
+      if (success === "false") {
+        setSubmitting(false);
+        Alert.alert(
+          "Erro",
+          String(error || "Não foi possível conectar com o Instagram")
+        );
+        return;
+      }
 
       setSubmitting(false);
-      router.replace("/home");
-      return;
-    }
-
-    if (success === "false") {
+    } catch (error) {
+      console.log("Erro ao tratar deep link:", error);
       setSubmitting(false);
-      Alert.alert(
-        "Erro",
-        String(error || "Não foi possível conectar com o Instagram")
-      );
-      return;
     }
-
-    setSubmitting(false);
-  } catch (error) {
-    console.log("Erro ao tratar deep link:", error);
-    setSubmitting(false);
   }
-}
 
   async function handleEntrar() {
-    if (!nome.trim()) return;
+    if (!nome.trim()) {
+      Alert.alert("Atenção", "Digite seu nome para continuar.");
+      return;
+    }
 
     try {
       setSubmitting(true);
@@ -110,55 +113,79 @@ export default function Login() {
       router.replace("/home");
     } catch (error) {
       console.log("Erro ao salvar usuário:", error);
+      Alert.alert("Erro", "Não foi possível entrar agora.");
     } finally {
       setSubmitting(false);
     }
   }
 
   async function handleEntrarInstagram() {
-  try {
-    setSubmitting(true);
-
-    const response = await fetch(
-      `${API_URL}/auth/app/instagram/login?redirect_back=${encodeURIComponent(REDIRECT_URI)}`
-    );
-
-    const data = await response.json();
-
-    console.log("AUTH URL:", data.authUrl);
-    console.log("REDIRECT_URI:", REDIRECT_URI);
-
-    if (!response.ok || !data?.authUrl) {
-      throw new Error(data?.error || "Falha ao iniciar login com Instagram");
-    }
-
-    const result = await WebBrowser.openAuthSessionAsync(
-      data.authUrl,
-      REDIRECT_URI
-    );
-
-    console.log("AUTH RESULT:", result);
-
-    if (result.type === "success" && "url" in result && result.url) {
-      await handleDeepLink(result.url);
+    if (!nome.trim()) {
+      Alert.alert("Atenção", "Digite seu nome antes de conectar o Instagram.");
       return;
     }
 
-    if (result.type === "cancel" || result.type === "dismiss") {
+    try {
+      setSubmitting(true);
+
+      const response = await fetch(
+        `${API_URL}/auth/app/instagram/login?redirect_back=${encodeURIComponent(
+          REDIRECT_URI
+        )}`
+      );
+
+      const data = await response.json();
+
+      console.log("AUTH URL:", data.authUrl);
+      console.log("REDIRECT_URI:", REDIRECT_URI);
+
+      if (!response.ok || !data?.authUrl) {
+        throw new Error(data?.error || "Falha ao iniciar login com Instagram");
+      }
+
+      const result = await WebBrowser.openAuthSessionAsync(
+        data.authUrl,
+        REDIRECT_URI
+      );
+
+      console.log("AUTH RESULT:", result);
+
+      if (result.type === "success" && "url" in result && result.url) {
+        await handleDeepLink(result.url);
+        return;
+      }
+
+      if (result.type === "cancel" || result.type === "dismiss") {
+        setSubmitting(false);
+        return;
+      }
+
       setSubmitting(false);
-      return;
+    } catch (error: any) {
+      console.log("Erro ao entrar com Instagram:", error);
+      Alert.alert(
+        "Erro",
+        error?.message || "Não foi possível conectar com o Instagram"
+      );
+      setSubmitting(false);
     }
-
-    setSubmitting(false);
-  } catch (error: any) {
-    console.log("Erro ao entrar com Instagram:", error);
-    Alert.alert(
-      "Erro",
-      error?.message || "Não foi possível conectar com o Instagram"
-    );
-    setSubmitting(false);
   }
-}
+
+  if (loading) {
+    return (
+      <LinearGradient
+        colors={["#feda75", "#fa7e1e", "#d62976", "#962fbf", "#4f5bd5"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.screen}
+      >
+        <SafeAreaView style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#fff" />
+          <Text style={styles.loadingText}>Carregando...</Text>
+        </SafeAreaView>
+      </LinearGradient>
+    );
+  }
 
   return (
     <LinearGradient
@@ -181,7 +208,7 @@ export default function Login() {
 
             <Text style={styles.appTitle}>Analisador IA</Text>
             <Text style={styles.appSubtitle}>
-              Seu assistente de crescimento no Instagram
+              Entre no app e conecte seu Instagram apenas quando quiser
             </Text>
           </View>
 
@@ -196,20 +223,21 @@ export default function Login() {
               </View>
             </View>
 
-            <Text style={styles.cardTitle}>Bem-vindo de volta</Text>
+            <Text style={styles.cardTitle}>Bem-vindo</Text>
             <Text style={styles.cardSubtitle}>
-              Entre para analisar seu perfil com inteligência artificial
+              Você já pode usar recursos manuais do app e conectar o Instagram
+              depois para desbloquear funções automáticas
             </Text>
 
             <View style={styles.inputWrapper}>
-              <Text style={styles.inputLabel}>Seu nome ou @usuário</Text>
+              <Text style={styles.inputLabel}>Seu nome</Text>
               <TextInput
                 value={nome}
                 onChangeText={setNome}
                 placeholder="Digite seu nome"
                 placeholderTextColor="#999"
                 style={styles.input}
-                autoCapitalize="none"
+                autoCapitalize="words"
               />
             </View>
 
@@ -224,7 +252,7 @@ export default function Login() {
               {submitting ? (
                 <ActivityIndicator color="#fff" />
               ) : (
-                <Text style={styles.primaryButtonText}>Entrar</Text>
+                <Text style={styles.primaryButtonText}>Entrar no app</Text>
               )}
             </TouchableOpacity>
 
@@ -236,7 +264,9 @@ export default function Login() {
               onPress={handleEntrarInstagram}
               disabled={submitting}
             >
-              <Text style={styles.secondaryButtonText}>Entrar com Instagram</Text>
+              <Text style={styles.secondaryButtonText}>
+                Entrar e conectar Instagram
+              </Text>
             </TouchableOpacity>
 
             <View style={styles.footerInfo}>
@@ -244,7 +274,7 @@ export default function Login() {
                 <Text style={styles.footerChipText}>IA</Text>
               </View>
               <View style={styles.footerChip}>
-                <Text style={styles.footerChipText}>Score</Text>
+                <Text style={styles.footerChipText}>Seguidores</Text>
               </View>
               <View style={styles.footerChip}>
                 <Text style={styles.footerChipText}>Insights</Text>
