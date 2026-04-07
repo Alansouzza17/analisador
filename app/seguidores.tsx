@@ -359,18 +359,17 @@ export default function SeguidoresScreen() {
             }
             ListHeaderComponent={
               <>
-                <View style={styles.infoWarning}>
-                  <Ionicons
-                    name="information-circle"
-                    size={18}
-                    color="#2563EB"
-                  />
-                  <Text style={styles.infoWarningText}>
-                    A quantidade importada pode ser diferente do Instagram. O
-                    arquivo pode conter contas desativadas, removidas,
-                    bloqueadas ou indisponíveis no momento.
-                  </Text>
-                </View>
+               <View style={styles.connectWarning}>
+  <Ionicons
+    name="link-outline"
+    size={18}
+    color="#7C3AED"
+  />
+  <Text style={styles.connectWarningText}>
+    Conecte sua conta do Instagram para ver o número de seguidores em tempo real
+    e receber alertas automáticos quando alguém deixar de seguir.
+  </Text>
+</View>
 
                 {showUpdateMessage && (
                   <View style={styles.updateCard}>
@@ -403,27 +402,40 @@ export default function SeguidoresScreen() {
                 )}
 
                 <View style={styles.statsRow}>
-                  <View style={styles.statCard}>
-                    <Text style={styles.statLabel}>Seguidores API</Text>
-                    <Text style={styles.statValue}>
-                      {profile?.followers_count ?? "--"}
-                    </Text>
-                  </View>
+  <View style={styles.statCard}>
+    <Text style={styles.statLabel}>Seguidores</Text>
+    <Text style={styles.statValue}>
+      {profile?.followers_count ?? "--"}
+    </Text>
+  </View>
 
-                  <View style={styles.statCard}>
-                    <Text style={styles.statLabel}>Seguindo API</Text>
-                    <Text style={styles.statValue}>
-                      {profile?.follows_count ?? "--"}
-                    </Text>
-                  </View>
+  <View style={styles.statCard}>
+    <Text style={styles.statLabel}>Seguindo</Text>
+    <Text style={styles.statValue}>
+      {profile?.follows_count ?? "--"}
+    </Text>
+  </View>
 
-                  <View style={styles.statCard}>
-                    <Text style={styles.statLabel}>Posts</Text>
-                    <Text style={styles.statValue}>
-                      {profile?.media_count ?? "--"}
-                    </Text>
-                  </View>
-                </View>
+  <View style={styles.statCard}>
+    <Text style={styles.statLabel}>Posts</Text>
+    <Text style={styles.statValue}>
+      {profile?.media_count ?? "--"}
+    </Text>
+  </View>
+</View>
+
+<View style={styles.infoWarning}>
+  <Ionicons
+    name="information-circle"
+    size={18}
+    color="#2563EB"
+  />
+  <Text style={styles.infoWarningText}>
+    A quantidade importada pode ser diferente do Instagram. O
+    arquivo pode conter contas desativadas, removidas,
+    bloqueadas ou indisponíveis no momento.
+  </Text>
+</View>
 
                 <View style={styles.secondaryStatsRow}>
                   <View style={styles.secondaryCard}>
@@ -979,4 +991,23 @@ const styles = StyleSheet.create({
     textAlign: "center",
     lineHeight: 22,
   },
+  connectWarning: {
+  backgroundColor: "#F5F3FF",
+  borderRadius: 18,
+  padding: 14,
+  marginBottom: 14,
+  flexDirection: "row",
+  alignItems: "flex-start",
+  borderWidth: 1,
+  borderColor: "#DDD6FE",
+},
+
+connectWarningText: {
+  flex: 1,
+  marginLeft: 8,
+  fontSize: 13,
+  color: "#5B21B6",
+  lineHeight: 18,
+  fontWeight: "600",
+},
 });
