@@ -7,7 +7,6 @@ import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  Image,
   KeyboardAvoidingView,
   Platform,
   StatusBar,
@@ -15,7 +14,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  View,
+  View
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { API_URL } from "../services/api";
@@ -49,21 +48,19 @@ export default function Login() {
     return () => subscription.remove();
   }, []);
 
-  async function verificarLogin() {
-    try {
-      const savedName = await AsyncStorage.getItem(USER_STORAGE_KEY);
+   async function verificarLogin() {
+  try {
+    const savedName = await AsyncStorage.getItem(USER_STORAGE_KEY);
 
-      if (savedName && savedName.trim()) {
-        setNome(savedName);
-        router.replace("/home");
-        return;
-      }
-    } catch (error) {
-      console.log("Erro ao verificar login:", error);
-    } finally {
-      setLoading(false);
+    if (savedName && savedName.trim()) {
+      setNome(savedName);
     }
+  } catch (error) {
+    console.log("Erro ao verificar login:", error);
+  } finally {
+    setLoading(false);
   }
+}
 
   async function handleDeepLink(url: string) {
     try {
@@ -207,27 +204,25 @@ export default function Login() {
             </View>
 
             <Text style={styles.appTitle}>Analisador IA</Text>
-            <Text style={styles.appSubtitle}>
-              Entre no app e conecte seu Instagram apenas quando quiser
-            </Text>
+            
           </View>
 
           <View style={styles.card}>
             <View style={styles.mockProfile}>
-              <Image
-                source={require("../assets/images/perfil.png")}
-                style={styles.mockAvatar}
-              />
-              <View style={styles.mockBadge}>
-                <Text style={styles.mockBadgeText}>Instagram Growth</Text>
-              </View>
-            </View>
+  <View style={styles.mockAvatar}>
+    <Text style={styles.mockAvatarIcon}>📈</Text>
+  </View>
 
-            <Text style={styles.cardTitle}>Bem-vindo</Text>
-            <Text style={styles.cardSubtitle}>
-              Você já pode usar recursos manuais do app e conectar o Instagram
-              depois para desbloquear funções automáticas
-            </Text>
+  <View style={styles.mockBadge}>
+    <Text style={styles.mockBadgeText}>Análise de seguidores</Text>
+  </View>
+</View>
+
+<Text style={styles.cardTitle}>Bem Vindo</Text>
+<Text style={styles.cardSubtitle}>
+  Use a importação manual para analisar seguidores agora ou conecte seu
+  Instagram para desbloquear recursos automáticos.
+</Text>
 
             <View style={styles.inputWrapper}>
               <Text style={styles.inputLabel}>Seu nome</Text>
@@ -265,7 +260,7 @@ export default function Login() {
               disabled={submitting}
             >
               <Text style={styles.secondaryButtonText}>
-                Entrar e conectar Instagram
+                Conectar Instagram
               </Text>
             </TouchableOpacity>
 
@@ -319,7 +314,7 @@ const styles = StyleSheet.create({
 
   topArea: {
     alignItems: "center",
-    marginTop: 36,
+    marginTop: 10,
   },
 
   logoCircle: {
@@ -372,14 +367,19 @@ const styles = StyleSheet.create({
   },
 
   mockAvatar: {
-    width: 84,
-    height: 84,
-    borderRadius: 42,
-    marginBottom: 10,
-    borderWidth: 3,
-    borderColor: "#fff",
-    backgroundColor: "#ddd",
-  },
+  width: 84,
+  height: 84,
+  borderRadius: 42,
+  marginBottom: 10,
+  borderWidth: 3,
+  borderColor: "#fff",
+  backgroundColor: "#FCE7F1",
+  alignItems: "center",
+  justifyContent: "center",
+},
+mockAvatarIcon: {
+  fontSize: 30,
+},
 
   mockBadge: {
     backgroundColor: "#F3E8FA",

@@ -144,10 +144,7 @@ export default function ContasScreen() {
         ListFooterComponent={
           <TouchableOpacity
   style={styles.addButton}
-  onPress={() => {
-    router.dismissAll();
-    router.push("/");
-  }}
+  onPress={() => router.push("/")}
 >
   <Text style={styles.addButtonText}>Conectar nova conta</Text>
 </TouchableOpacity>
