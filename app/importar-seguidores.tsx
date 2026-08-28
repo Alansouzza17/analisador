@@ -1,4 +1,5 @@
-import { API_URL } from "@/services/api";
+import { getFollowerStorageKeys } from "@/services/followers-storage";
+import { apiRequest } from "@/services/http";
 import { getActiveSessionId } from "@/services/session";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as DocumentPicker from "expo-document-picker";
@@ -18,14 +19,6 @@ type UserItem = {
   username: string;
 };
 
-const FOLLOWERS_STORAGE_KEY = "@followers_importados";
-const FOLLOWING_STORAGE_KEY = "@following_importados";
-const PREVIOUS_FOLLOWERS_STORAGE_KEY = "@followers_importados_anterior";
-const LAST_API_FOLLOWERS_COUNT_KEY = "@last_api_followers_count";
-const LAST_API_FOLLOWING_COUNT_KEY = "@last_api_following_count";
-const FOLLOWERS_COMPARISON_READY_KEY = "@followers_comparison_ready";
-const UPDATE_WARNING_READY_KEY = "@update_warning_ready";
-
 export default function ImportarSeguidores() {
   const router = useRouter();
 
@@ -42,12 +35,13 @@ export default function ImportarSeguidores() {
 
   async function carregarUltimaLista() {
     try {
+      const storageKeys = await getFollowerStorageKeys();
       const savedFollowers = await AsyncStorage.getItem(
-        FOLLOWERS_STORAGE_KEY
+        storageKeys.followers
       );
 
       const savedFollowing = await AsyncStorage.getItem(
-        FOLLOWING_STORAGE_KEY
+        storageKeys.following
       );
 
       if (savedFollowing) {
@@ -103,6 +97,7 @@ export default function ImportarSeguidores() {
   async function selecionarArquivo() {
     try {
       setLoading(true);
+      const storageKeys = await getFollowerStorageKeys();
 
       const result = await DocumentPicker.getDocumentAsync({
         type: ["application/json"],
@@ -136,35 +131,35 @@ export default function ImportarSeguidores() {
         setImportType("following");
 
         await AsyncStorage.setItem(
-          FOLLOWING_STORAGE_KEY,
+          storageKeys.following,
           JSON.stringify(uniqueUsers)
         );
       } else {
         setImportType("followers");
 
         const listaAtual = await AsyncStorage.getItem(
-          FOLLOWERS_STORAGE_KEY
+          storageKeys.followers
         );
 
         if (listaAtual) {
           await AsyncStorage.setItem(
-            PREVIOUS_FOLLOWERS_STORAGE_KEY,
+            storageKeys.previousFollowers,
             listaAtual
           );
 
           await AsyncStorage.setItem(
-            FOLLOWERS_COMPARISON_READY_KEY,
+            storageKeys.comparisonReady,
             "true"
           );
         } else {
           await AsyncStorage.setItem(
-            FOLLOWERS_COMPARISON_READY_KEY,
+            storageKeys.comparisonReady,
             "false"
           );
         }
 
         await AsyncStorage.setItem(
-          FOLLOWERS_STORAGE_KEY,
+          storageKeys.followers,
           JSON.stringify(uniqueUsers)
         );
       }
@@ -191,15 +186,10 @@ export default function ImportarSeguidores() {
           text: "Limpar",
           style: "destructive",
           onPress: async () => {
+            const storageKeys = await getFollowerStorageKeys();
             await AsyncStorage.multiRemove([
-  FOLLOWERS_STORAGE_KEY,
-  FOLLOWING_STORAGE_KEY,
-  PREVIOUS_FOLLOWERS_STORAGE_KEY,
-  LAST_API_FOLLOWERS_COUNT_KEY,
-  LAST_API_FOLLOWING_COUNT_KEY,
-  FOLLOWERS_COMPARISON_READY_KEY,
-  UPDATE_WARNING_READY_KEY,
-]);
+              ...Object.values(storageKeys),
+            ]);
 
             setUsers([]);
             setFileName("");
@@ -218,34 +208,30 @@ export default function ImportarSeguidores() {
 
   try {
     const sessionId = await getActiveSessionId();
+    const storageKeys = await getFollowerStorageKeys();
 
     // Se tiver Instagram conectado, salva a referência da API
     if (sessionId) {
       try {
-        const response = await fetch(
-          `${API_URL}/me/instagram/profile?session_id=${encodeURIComponent(
-            sessionId
-          )}`
-        );
+        const profile = await apiRequest<{
+          followers_count: number;
+          follows_count: number;
+        }>("/me/instagram/profile", { sessionId });
 
-        if (response.ok) {
-          const profile = await response.json();
-
-          await AsyncStorage.multiSet([
-            [LAST_API_FOLLOWERS_COUNT_KEY, String(profile.followers_count)],
-            [LAST_API_FOLLOWING_COUNT_KEY, String(profile.follows_count)],
-            [UPDATE_WARNING_READY_KEY, "true"],
-          ]);
-        }
+        await AsyncStorage.multiSet([
+          [storageKeys.lastApiFollowers, String(profile.followers_count)],
+          [storageKeys.lastApiFollowing, String(profile.follows_count)],
+          [storageKeys.updateWarningReady, "true"],
+        ]);
       } catch (error) {
         console.log("Erro ao salvar referência da API:", error);
       }
     } else {
       // Sem Instagram conectado, desativa o aviso automático
       await AsyncStorage.multiRemove([
-        LAST_API_FOLLOWERS_COUNT_KEY,
-        LAST_API_FOLLOWING_COUNT_KEY,
-        UPDATE_WARNING_READY_KEY,
+        storageKeys.lastApiFollowers,
+        storageKeys.lastApiFollowing,
+        storageKeys.updateWarningReady,
       ]);
     }
 
@@ -280,6 +266,7 @@ export default function ImportarSeguidores() {
         <TouchableOpacity
           style={styles.button}
           onPress={selecionarArquivo}
+          disabled={loading}
         >
           <Text style={styles.buttonText}>
             {loading
@@ -291,6 +278,7 @@ export default function ImportarSeguidores() {
         <TouchableOpacity
           style={styles.reset}
           onPress={limparDadosImportados}
+          disabled={loading}
         >
           <Text style={styles.resetText}>
             Limpar dados e recomeçar
@@ -317,6 +305,7 @@ export default function ImportarSeguidores() {
           <TouchableOpacity
             style={styles.send}
             onPress={enviarParaAbaSeguidores}
+            disabled={loading}
           >
             <Text style={styles.sendText}>
               Enviar para seguidores

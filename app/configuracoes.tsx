@@ -1,3 +1,5 @@
+import { apiRequest } from "@/services/http";
+import { getActiveSessionId, removeConnectedAccount } from "@/services/session";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { LinearGradient } from "expo-linear-gradient";
@@ -23,9 +25,25 @@ export default function Configuracoes() {
 
   async function handleLogout() {
     try {
+      const sessionId = await getActiveSessionId();
+
+      if (sessionId) {
+        try {
+          await apiRequest("/auth/app/logout", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ session_id: sessionId }),
+          });
+        } catch (error) {
+          console.log("Erro ao avisar logout no backend:", error);
+        }
+
+        await removeConnectedAccount(sessionId);
+      }
+
       await AsyncStorage.removeItem("@user_name");
       router.replace("/");
-    } catch (error) {
+    } catch {
       Alert.alert("Erro", "Não foi possível sair da conta");
     }
   }
@@ -84,7 +102,10 @@ export default function Configuracoes() {
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Conta</Text>
 
-            <TouchableOpacity style={styles.settingCard}>
+            <TouchableOpacity
+              style={styles.settingCard}
+              onPress={() => router.push("/profile")}
+            >
               <View style={styles.settingLeft}>
                 <View style={[styles.iconBox, { backgroundColor: "#EAF5EA" }]}>
                   <Text style={styles.iconEmoji}>👤</Text>
@@ -93,7 +114,7 @@ export default function Configuracoes() {
                 <View>
                   <Text style={styles.settingTitle}>Perfil</Text>
                   <Text style={styles.settingSubtitle}>
-                    Edite seus dados e informações
+                    Visualize os dados e posts da conta ativa
                   </Text>
                 </View>
               </View>
@@ -114,7 +135,7 @@ export default function Configuracoes() {
                 <View>
                   <Text style={styles.settingTitle}>Notificações</Text>
                   <Text style={styles.settingSubtitle}>
-                    Receba alertas e novidades
+                    Não disponível nesta versão
                   </Text>
                 </View>
               </View>
@@ -122,6 +143,7 @@ export default function Configuracoes() {
               <Switch
                 value={notificationsEnabled}
                 onValueChange={setNotificationsEnabled}
+                disabled
                 trackColor={{ false: "#DADADA", true: "#d62976" }}
                 thumbColor="#fff"
               />
@@ -136,7 +158,7 @@ export default function Configuracoes() {
                 <View>
                   <Text style={styles.settingTitle}>Modo escuro</Text>
                   <Text style={styles.settingSubtitle}>
-                    Aparência escura do aplicativo
+                    Usa automaticamente o tema do aparelho
                   </Text>
                 </View>
               </View>
@@ -144,6 +166,7 @@ export default function Configuracoes() {
               <Switch
                 value={darkModeEnabled}
                 onValueChange={setDarkModeEnabled}
+                disabled
                 trackColor={{ false: "#DADADA", true: "#4f5bd5" }}
                 thumbColor="#fff"
               />
@@ -182,7 +205,7 @@ export default function Configuracoes() {
                 <View>
                   <Text style={styles.settingTitle}>Feedback</Text>
                   <Text style={styles.settingSubtitle}>
-                    Envie sugestões para melhorar
+                    Não disponível nesta versão
                   </Text>
                 </View>
               </View>

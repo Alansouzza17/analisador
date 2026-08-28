@@ -1,12 +1,12 @@
 import ExpandableText from "@/components/ExpandableText";
-import { API_URL } from "@/services/api";
-import { getActiveSessionId } from "@/services/session";
+import { apiRequest, ApiError } from "@/services/http";
+import { getActiveConnectedAccount, getActiveSessionId } from "@/services/session";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Clipboard from "expo-clipboard";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -48,6 +48,11 @@ type InstagramProfile = {
 
 const ANALYSIS_STORAGE_KEY = "@last_profile_analysis";
 
+async function getAnalysisStorageKey(): Promise<string | null> {
+  const account = await getActiveConnectedAccount();
+  return account ? `${ANALYSIS_STORAGE_KEY}:${account.id}` : null;
+}
+
 export default function Analysis() {
   const router = useRouter();
 
@@ -58,18 +63,15 @@ export default function Analysis() {
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    carregarUltimaAnalise();
-    carregarPerfil();
-  }, []);
-
   async function getSessionId() {
   return await getActiveSessionId();
 }
 
-  async function carregarUltimaAnalise() {
+  const carregarUltimaAnalise = useCallback(async () => {
     try {
-      const saved = await AsyncStorage.getItem(ANALYSIS_STORAGE_KEY);
+      setResult(null);
+      const storageKey = await getAnalysisStorageKey();
+      const saved = storageKey ? await AsyncStorage.getItem(storageKey) : null;
 
       if (saved) {
         const parsed: IAResponse = JSON.parse(saved);
@@ -80,11 +82,12 @@ export default function Analysis() {
     } finally {
       setLoadingSaved(false);
     }
-  }
+  }, []);
 
- async function carregarPerfil() {
+ const carregarPerfil = useCallback(async () => {
   try {
     setLoadingProfile(true);
+    setProfile(null);
 
     const sessionId = await getSessionId();
 
@@ -92,15 +95,9 @@ export default function Analysis() {
       throw new Error("Sessão não encontrada");
     }
 
-    const response = await fetch(
-      `${API_URL}/me/instagram/profile?session_id=${encodeURIComponent(sessionId)}`
-    );
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data?.error || "Erro ao carregar perfil");
-    }
+    const data = await apiRequest<InstagramProfile>("/me/instagram/profile", {
+      sessionId,
+    });
 
     setProfile(data);
   } catch (error) {
@@ -108,7 +105,12 @@ export default function Analysis() {
   } finally {
     setLoadingProfile(false);
   }
-}
+}, []);
+
+  useEffect(() => {
+    void carregarUltimaAnalise();
+    void carregarPerfil();
+  }, [carregarPerfil, carregarUltimaAnalise]);
 
   async function analisarPerfil() {
   try {
@@ -121,27 +123,16 @@ export default function Analysis() {
       throw new Error("Sessão não encontrada");
     }
 
-    const response = await fetch(
-      `${API_URL}/ia/analyze?session_id=${encodeURIComponent(sessionId)}`
-    );
-
-    const text = await response.text();
-
-    if (!response.ok) {
-      throw new Error(text);
-    }
-
-    const data: IAResponse = JSON.parse(text);
+    const data = await apiRequest<IAResponse>("/ia/analyze", { sessionId });
 
     setResult(data);
 
-    await AsyncStorage.setItem(
-      ANALYSIS_STORAGE_KEY,
-      JSON.stringify(data)
-    );
-  } catch (e) {
-    console.log("Erro ao analisar perfil:", e);
-    setError("Erro ao analisar perfil");
+    const storageKey = await getAnalysisStorageKey();
+    if (storageKey) await AsyncStorage.setItem(storageKey, JSON.stringify(data));
+  } catch (error) {
+    console.log("Erro ao analisar perfil:", error);
+    setError(error instanceof Error ? error.message : "Erro ao analisar perfil");
+    if (error instanceof ApiError && error.status === 401) router.replace("/");
   } finally {
     setLoadingIA(false);
   }
@@ -167,7 +158,7 @@ export default function Analysis() {
     try {
       await Clipboard.setStringAsync(cleanMarkdown(result.bioSugerida));
       Alert.alert("Copiado", "Bio copiada com sucesso.");
-    } catch (error) {
+    } catch {
       Alert.alert("Erro", "Não foi possível copiar a bio.");
     }
   }
@@ -230,6 +221,7 @@ export default function Analysis() {
             <TouchableOpacity
               style={styles.analyzeButton}
               onPress={analisarPerfil}
+              disabled={loadingIA}
             >
               <Text style={styles.analyzeButtonText}>Analisar Perfil Agora</Text>
             </TouchableOpacity>
@@ -251,6 +243,7 @@ export default function Analysis() {
               <TouchableOpacity
                 style={styles.refreshButton}
                 onPress={analisarPerfil}
+                disabled={loadingIA}
               >
                 <Text style={styles.refreshButtonText}>Atualizar análise</Text>
               </TouchableOpacity>
@@ -378,7 +371,15 @@ export default function Analysis() {
                   maxLength={180}
                 />
 
-                <TouchableOpacity style={styles.actionButton}>
+                <TouchableOpacity
+                  style={styles.actionButton}
+                  onPress={() =>
+                    Alert.alert(
+                      "Em breve",
+                      "A geração de plano de ação ainda não está disponível."
+                    )
+                  }
+                >
                   <Text style={styles.actionButtonText}>Gerar Plano de Ação</Text>
                 </TouchableOpacity>
               </LinearGradient>

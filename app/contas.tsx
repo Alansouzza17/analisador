@@ -1,3 +1,4 @@
+import { apiRequest } from "@/services/http";
 import {
   ConnectedAccount,
   getActiveSessionId,
@@ -51,6 +52,16 @@ export default function ContasScreen() {
   async function handleRemove(sessionId: string) {
   const isActive = sessionId === activeSessionId;
 
+  try {
+    await apiRequest("/auth/app/logout", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session_id: sessionId }),
+    });
+  } catch {
+    // A remoção local deve funcionar mesmo se o backend estiver indisponível.
+  }
+
   await removeConnectedAccount(sessionId);
 
   if (isActive) {
@@ -99,7 +110,7 @@ export default function ContasScreen() {
       <FlatList
         contentContainerStyle={styles.list}
         data={accounts}
-        keyExtractor={(item) => item.sessionId}
+        keyExtractor={(item) => item.id}
         renderItem={({ item }) => {
           const isActive = item.sessionId === activeSessionId;
 
@@ -144,7 +155,7 @@ export default function ContasScreen() {
         ListFooterComponent={
           <TouchableOpacity
   style={styles.addButton}
-  onPress={() => router.push("/")}
+  onPress={() => router.push({ pathname: "/", params: { addAccount: "1" } })}
 >
   <Text style={styles.addButtonText}>Conectar nova conta</Text>
 </TouchableOpacity>

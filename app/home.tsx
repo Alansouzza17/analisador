@@ -1,4 +1,4 @@
-import { API_URL } from "@/services/api";
+import { apiRequest, ApiError } from "@/services/http";
 import {
   getActiveSessionId,
   removeConnectedAccount,
@@ -6,8 +6,8 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { LinearGradient } from "expo-linear-gradient";
-import { useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useFocusEffect, useRouter } from "expo-router";
+import { useCallback, useState } from "react";
 import {
   Alert,
   Image,
@@ -36,17 +36,10 @@ export default function Home() {
 
   const [userName, setUserName] = useState("");
   const [profile, setProfile] = useState<InstagramProfile | null>(null);
-  const [loading, setLoading] = useState(true);
   const [hasInstagramConnected, setHasInstagramConnected] = useState(false);
 
-  useEffect(() => {
-    carregarDados();
-  }, []);
-
-  async function carregarDados() {
+  const carregarDados = useCallback(async () => {
     try {
-      setLoading(true);
-
       const [savedName, sessionId] = await Promise.all([
         AsyncStorage.getItem(USER_STORAGE_KEY),
         getActiveSessionId(),
@@ -64,27 +57,26 @@ export default function Home() {
 
       setHasInstagramConnected(true);
 
-      const response = await fetch(
-        `${API_URL}/me/instagram/profile?session_id=${encodeURIComponent(
-          sessionId
-        )}`
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data?.error || "Erro ao buscar perfil");
-      }
+      const data = await apiRequest<InstagramProfile>("/me/instagram/profile", {
+        sessionId,
+      });
 
       setProfile(data);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.log("Erro ao carregar home:", error);
       setProfile(null);
       setHasInstagramConnected(false);
-    } finally {
-      setLoading(false);
+      if (error instanceof ApiError && error.status === 401) {
+        Alert.alert("Sessão expirada", error.message);
+      }
     }
-  }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      void carregarDados();
+    }, [carregarDados])
+  );
 
   function abrirRecursoProtegido(path: string) {
     if (!hasInstagramConnected) {
@@ -104,7 +96,7 @@ export default function Home() {
 
     if (sessionId) {
       try {
-        await fetch(`${API_URL}/auth/app/logout`, {
+        await apiRequest("/auth/app/logout", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -349,6 +341,19 @@ export default function Home() {
               <Text style={styles.actionTitle}>Importar</Text>
               <Text style={styles.actionSubtitle}>
                 Adicione um arquivo manual de seguidores
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.actionCard}
+              onPress={() => router.push("/configuracoes")}
+            >
+              <View style={styles.actionIconBox}>
+                <Ionicons name="settings-outline" size={24} color="#d62976" />
+              </View>
+              <Text style={styles.actionTitle}>Configurações</Text>
+              <Text style={styles.actionSubtitle}>
+                Conta, preferências e informações do app
               </Text>
             </TouchableOpacity>
           </View>

@@ -1,12 +1,14 @@
-import { API_URL } from "@/services/api";
+import { apiRequest } from "@/services/http";
+import { getFollowerStorageKeys } from "@/services/followers-storage";
 import { getActiveSessionId } from "@/services/session";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { LinearGradient } from "expo-linear-gradient";
 import { useFocusEffect, useRouter } from "expo-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Image,
   RefreshControl,
@@ -39,14 +41,6 @@ type FilterType =
   | "deixaram_de_seguir"
   | "novos";
 
-const FOLLOWERS_STORAGE_KEY = "@followers_importados";
-const FOLLOWING_STORAGE_KEY = "@following_importados";
-const PREVIOUS_FOLLOWERS_STORAGE_KEY = "@followers_importados_anterior";
-const LAST_API_FOLLOWERS_COUNT_KEY = "@last_api_followers_count";
-const LAST_API_FOLLOWING_COUNT_KEY = "@last_api_following_count";
-const FOLLOWERS_COMPARISON_READY_KEY = "@followers_comparison_ready";
-const UPDATE_WARNING_READY_KEY = "@update_warning_ready";
-
 export default function SeguidoresScreen() {
   const router = useRouter();
 
@@ -66,27 +60,17 @@ export default function SeguidoresScreen() {
   const [activeTab, setActiveTab] = useState<TabType>("followers");
   const [activeFilter, setActiveFilter] = useState<FilterType>("todos");
 
-  useEffect(() => {
-    carregarDados();
-  }, []);
-
-  useFocusEffect(
-    useCallback(() => {
-      carregarDados();
-    }, [])
-  );
-
   async function getSessionId() {
     return await getActiveSessionId();
   }
 
- async function carregarDados() {
+ const carregarDados = useCallback(async () => {
   try {
     const sessionId = await getSessionId();
 
-    console.log("SEGUIDORES SESSION ID:", sessionId);
-
     setInitialLoading(true);
+    setProfile(null);
+    const storageKeys = await getFollowerStorageKeys();
 
     const [
       savedFollowers,
@@ -97,13 +81,13 @@ export default function SeguidoresScreen() {
       savedComparisonReady,
       savedUpdateWarningReady,
     ] = await Promise.all([
-      AsyncStorage.getItem(FOLLOWERS_STORAGE_KEY),
-      AsyncStorage.getItem(FOLLOWING_STORAGE_KEY),
-      AsyncStorage.getItem(PREVIOUS_FOLLOWERS_STORAGE_KEY),
-      AsyncStorage.getItem(LAST_API_FOLLOWERS_COUNT_KEY),
-      AsyncStorage.getItem(LAST_API_FOLLOWING_COUNT_KEY),
-      AsyncStorage.getItem(FOLLOWERS_COMPARISON_READY_KEY),
-      AsyncStorage.getItem(UPDATE_WARNING_READY_KEY),
+      AsyncStorage.getItem(storageKeys.followers),
+      AsyncStorage.getItem(storageKeys.following),
+      AsyncStorage.getItem(storageKeys.previousFollowers),
+      AsyncStorage.getItem(storageKeys.lastApiFollowers),
+      AsyncStorage.getItem(storageKeys.lastApiFollowing),
+      AsyncStorage.getItem(storageKeys.comparisonReady),
+      AsyncStorage.getItem(storageKeys.updateWarningReady),
     ]);
 
     setFollowers(savedFollowers ? JSON.parse(savedFollowers) : []);
@@ -129,19 +113,11 @@ export default function SeguidoresScreen() {
 
     // 🔹 Só busca API se tiver Instagram conectado
     if (sessionId) {
-      const profileResponse = await fetch(
-        `${API_URL}/me/instagram/profile?session_id=${encodeURIComponent(
-          sessionId
-        )}`
+      const profileData = await apiRequest<InstagramProfile>(
+        "/me/instagram/profile",
+        { sessionId }
       );
-
-      const profileData = await profileResponse.json();
-
-      console.log("SEGUIDORES PROFILE RESPONSE:", profileData);
-
-      if (profileResponse.ok) {
-        setProfile(profileData);
-      }
+      setProfile(profileData);
     } else {
       // Sem Instagram conectado
       setProfile(null);
@@ -149,11 +125,23 @@ export default function SeguidoresScreen() {
 
   } catch (error) {
     console.warn("Erro ao carregar tela seguidores:", error);
+    Alert.alert(
+      "Erro ao atualizar",
+      error instanceof Error
+        ? error.message
+        : "Não foi possível atualizar os dados de seguidores."
+    );
   } finally {
     setInitialLoading(false);
     setRefreshing(false);
   }
-}
+}, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      void carregarDados();
+    }, [carregarDados])
+  );
 
   function handleRefresh() {
     setRefreshing(true);

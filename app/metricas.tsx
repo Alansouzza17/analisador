@@ -1,9 +1,9 @@
-import { API_URL } from "@/services/api";
+import { apiRequest, ApiError } from "@/services/http";
 import { getActiveSessionId } from "@/services/session";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import { useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useFocusEffect, useRouter } from "expo-router";
+import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -55,11 +55,7 @@ export default function Metricas() {
     return await getActiveSessionId();
   }
 
-  useEffect(() => {
-    carregarDados();
-  }, []);
-
-  async function carregarDados() {
+  const carregarDados = useCallback(async () => {
     try {
       const sessionId = await getSessionId();
 
@@ -70,43 +66,30 @@ export default function Metricas() {
       }
 
       setLoading(true);
+      setProfile(null);
+      setAnalysis(null);
 
-      const profileResponse = await fetch(
-        `${API_URL}/me/instagram/profile?session_id=${encodeURIComponent(
-          sessionId
-        )}`
+      const profileData = await apiRequest<InstagramProfile>(
+        "/me/instagram/profile",
+        { sessionId }
       );
-
-      const profileData = await profileResponse.json();
-
-      if (!profileResponse.ok) {
-        throw new Error(profileData?.error || "Erro ao buscar perfil");
-      }
 
       setProfile(profileData);
       setLoading(false);
 
       setLoadingAnalysis(true);
 
-      const analysisResponse = await fetch(
-        `${API_URL}/ia/analyze?session_id=${encodeURIComponent(sessionId)}`
-      );
-
-      const analysisData = await analysisResponse.json();
-
-      if (!analysisResponse.ok) {
-        throw new Error(analysisData?.error || "Erro ao buscar análise");
-      }
+      const analysisData = await apiRequest<IAResponse>("/ia/analyze", {
+        sessionId,
+      });
 
       setAnalysis(analysisData);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.log("Erro métricas:", error);
 
-      if (loading) {
-        setLoading(false);
-      }
+      setLoading(false);
 
-      if (error?.message?.includes("Sessão")) {
+      if (error instanceof ApiError && error.status === 401) {
         Alert.alert("Sessão expirada", "Faça login novamente");
         router.replace("/");
         return;
@@ -114,13 +97,21 @@ export default function Metricas() {
 
       Alert.alert(
         "Erro",
-        error?.message || "Não foi possível carregar as métricas"
+        error instanceof Error
+          ? error.message
+          : "Não foi possível carregar as métricas"
       );
     } finally {
       setLoadingAnalysis(false);
       setRefreshing(false);
     }
-  }
+  }, [router]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void carregarDados();
+    }, [carregarDados])
+  );
 
   function onRefresh() {
     setRefreshing(true);

@@ -1,50 +1,78 @@
-# Welcome to your Expo app 👋
+# Analisador IA
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Aplicativo Expo/React Native para análise de perfil, conteúdo e listas de
+seguidores do Instagram. O backend Express integra o login OAuth do Instagram
+e a API Gemini.
 
-## Get started
+## Requisitos
 
-1. Install dependencies
+- Node.js 20 ou mais recente
+- npm
+- Expo Go ou um emulador Android/iOS
 
-   ```bash
-   npm install
-   ```
+O projeto não usa banco de dados. O backend usa `MemorySessionStore` por padrão,
+com sessões que expiram após 24 horas. A interface `SessionStore` permite trocar
+essa implementação futuramente sem alterar as rotas. Reiniciar ou escalar o
+servidor com o armazenamento em memória invalida as sessões atuais.
 
-2. Start the app
+No aplicativo mobile, identificadores de sessão são armazenados no SecureStore.
+Metadados não sensíveis permanecem no AsyncStorage. Sessões de versões antigas
+são migradas automaticamente na primeira leitura.
 
-   ```bash
-   npx expo start
-   ```
+Listas importadas de seguidores são separadas por conta ativa para evitar que
+dados de uma conta apareçam ao alternar para outra. Chamadas do aplicativo ao
+backend têm timeout e mensagens amigáveis para falhas de rede e HTTP; respostas
+401 removem automaticamente a sessão inválida do armazenamento local.
 
-In the output, you'll find options to open the app in a
+## Configuração
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+Copie `.env.example` para `.env` e `server/.env.example` para `server/.env`.
+Preencha as credenciais reais somente no arquivo local `server/.env`, que é
+ignorado pelo Git.
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+Mantenha `SESSION_STORE=memory` no desenvolvimento local. Outros drivers ainda
+não estão implementados e são rejeitados explicitamente durante a inicialização.
 
-## Get a fresh project
+No desenvolvimento em um aparelho físico, `EXPO_PUBLIC_API_URL` deve apontar
+para um endereço do backend acessível pelo aparelho, e não para `localhost`.
+Configure no painel da Meta o callback `<BASE_URL>/auth/app/instagram/callback`.
 
-When you're ready, run:
+## Instalação e execução
+
+Backend:
 
 ```bash
-npm run reset-project
+cd server
+npm ci
+npm start
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+Aplicativo (em outro terminal, na raiz):
 
-## Learn more
+```bash
+npm ci
+npm start
+```
 
-To learn more about developing your project with Expo, look at the following resources:
+Atalhos disponíveis:
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+```bash
+npm run android
+npm run ios
+npm run web
+```
 
-## Join the community
+## Validação
 
-Join our community of developers creating universal apps.
+```bash
+npx tsc --noEmit
+npm run lint
+npx expo-doctor
+npx expo export --platform web
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+cd server
+npm run check
+npm test
+```
+
+Não há migrations ou serviço de banco de dados para iniciar neste repositório.

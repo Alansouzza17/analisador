@@ -1,6 +1,7 @@
+import { apiRequest } from "@/services/http";
 import { LinearGradient } from "expo-linear-gradient";
-import { useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
+import { useFocusEffect, useRouter } from "expo-router";
+import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -11,7 +12,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { API_URL } from "../services/api";
 import { getActiveSessionId } from "../services/session";
 
 type InstagramProfile = {
@@ -38,9 +38,11 @@ export default function Profile() {
   const [posts, setPosts] = useState<InstagramMedia[]>([]);
   const [loading, setLoading] = useState(true);
 
-  async function fetchData() {
+  const fetchData = useCallback(async () => {
     try {
       setLoading(true);
+      setProfile(null);
+      setPosts([]);
 
       const sessionId = await getActiveSessionId();
 
@@ -48,38 +50,30 @@ export default function Profile() {
         throw new Error("Nenhuma sessão do Instagram encontrada");
       }
 
-      const [profileResponse, postsResponse] = await Promise.all([
-        fetch(
-          `${API_URL}/me/instagram/profile?session_id=${encodeURIComponent(sessionId)}`
-        ),
-        fetch(
-          `${API_URL}/me/instagram/media?session_id=${encodeURIComponent(sessionId)}`
-        ),
+      const [profileData, postsData] = await Promise.all([
+        apiRequest<InstagramProfile>("/me/instagram/profile", { sessionId }),
+        apiRequest<{ data?: InstagramMedia[] }>("/me/instagram/media", {
+          sessionId,
+        }),
       ]);
-
-      const profileData = await profileResponse.json();
-      const postsData = await postsResponse.json();
-
-      if (!profileResponse.ok) {
-        throw new Error(profileData?.error || "Erro ao buscar perfil");
-      }
-
-      if (!postsResponse.ok) {
-        throw new Error(postsData?.error || "Erro ao buscar posts");
-      }
 
       setProfile(profileData);
       setPosts(Array.isArray(postsData?.data) ? postsData.data : []);
-    } catch (error: any) {
-      Alert.alert("Erro", error?.message || "Não foi possível carregar os dados");
+    } catch (error: unknown) {
+      Alert.alert(
+        "Erro",
+        error instanceof Error ? error.message : "Não foi possível carregar os dados"
+      );
     } finally {
       setLoading(false);
     }
-  }
-
-  useEffect(() => {
-    fetchData();
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      void fetchData();
+    }, [fetchData])
+  );
 
   function formatDate(dateString: string) {
     try {
@@ -112,7 +106,11 @@ export default function Profile() {
             <Text style={styles.backText}>Voltar</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.refreshButton} onPress={fetchData}>
+          <TouchableOpacity
+            style={styles.refreshButton}
+            onPress={fetchData}
+            disabled={loading}
+          >
             <Text style={styles.refreshText}>Atualizar</Text>
           </TouchableOpacity>
         </View>

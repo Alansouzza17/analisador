@@ -1,11 +1,11 @@
-import { API_URL } from "@/services/api";
+import { apiRequest } from "@/services/http";
 import { getActiveSessionId } from "@/services/session";
 import { Ionicons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
 import * as ImagePicker from "expo-image-picker";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import {
     ActivityIndicator,
     Alert,
@@ -30,11 +30,11 @@ type AIResult = {
 
 export default function Sugestao() {
   const router = useRouter();
-  const SESSION_STORAGE_KEY = "@instagram_session_id";
 
   const [image, setImage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<AIResult | null>(null);
+  const requestInFlight = useRef(false);
 
   async function getSessionId() {
   return await getActiveSessionId();
@@ -100,42 +100,35 @@ export default function Sugestao() {
 
   async function analyzeImage(base64: string | undefined) {
   try {
+    if (requestInFlight.current) return;
     if (!base64) {
       Alert.alert("Erro", "Imagem inválida");
       return;
     }
 
     setLoading(true);
+    requestInFlight.current = true;
     setResult(null);
 
     const sessionId = await getSessionId();
+    if (!sessionId) throw new Error("Conecte o Instagram antes de analisar uma imagem.");
 
-    const response = await fetch(
-      `${API_URL}/ia/photo?session_id=${sessionId}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          image: `data:image/jpeg;base64,${base64}`,
-        }),
-      }
-    );
-
-    const text = await response.text();
-
-    if (!response.ok) {
-      throw new Error(text);
-    }
-
-    const data: AIResult = JSON.parse(text);
+    const data = await apiRequest<AIResult>("/ia/photo", {
+      method: "POST",
+      sessionId,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image: `data:image/jpeg;base64,${base64}` }),
+    });
     setResult(data);
 
   } catch (error) {
     console.log("Erro IA:", error);
-    Alert.alert("Erro", "Erro ao analisar imagem");
+    Alert.alert(
+      "Erro",
+      error instanceof Error ? error.message : "Erro ao analisar imagem"
+    );
   } finally {
+    requestInFlight.current = false;
     setLoading(false);
   }
 }
@@ -144,7 +137,7 @@ export default function Sugestao() {
     try {
       await Clipboard.setStringAsync(value);
       Alert.alert("Copiado", `${label} copiado com sucesso`);
-    } catch (error) {
+    } catch {
       Alert.alert("Erro", `Não foi possível copiar ${label.toLowerCase()}`);
     }
   }
@@ -207,7 +200,11 @@ export default function Sugestao() {
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.actionsRow}>
-            <TouchableOpacity style={styles.actionCard} onPress={takePhoto}>
+            <TouchableOpacity
+              style={styles.actionCard}
+              onPress={takePhoto}
+              disabled={loading}
+            >
               <View style={[styles.actionIconBox, { backgroundColor: "#EAF5EA" }]}>
                 <Text style={styles.actionEmoji}>📷</Text>
               </View>
@@ -215,7 +212,11 @@ export default function Sugestao() {
               <Text style={styles.actionSubtitle}>Capture agora</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.actionCard} onPress={pickImage}>
+            <TouchableOpacity
+              style={styles.actionCard}
+              onPress={pickImage}
+              disabled={loading}
+            >
               <View style={[styles.actionIconBox, { backgroundColor: "#F3E8FA" }]}>
                 <Text style={styles.actionEmoji}>🖼️</Text>
               </View>
@@ -294,7 +295,15 @@ export default function Sugestao() {
                 {renderTagList(result.hashtags)}
               </View>
 
-              <TouchableOpacity style={styles.publishButton}>
+              <TouchableOpacity
+                style={styles.publishButton}
+                onPress={() =>
+                  Alert.alert(
+                    "Publicação manual",
+                    "A publicação direta no Instagram ainda não está disponível. Copie a legenda e as hashtags para publicar pelo aplicativo do Instagram."
+                  )
+                }
+              >
                 <LinearGradient
                   colors={["#d62976", "#962fbf", "#4f5bd5"]}
                   start={{ x: 0, y: 0 }}
