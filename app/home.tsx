@@ -5,6 +5,7 @@ import {
 } from "@/services/session";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { clearAuthToken, getAuthToken } from "@/services/auth-session";
 import { LinearGradient } from "expo-linear-gradient";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useState } from "react";
@@ -92,7 +93,12 @@ export default function Home() {
 
   async function sair() {
   try {
-    const sessionId = await getActiveSessionId();
+    const [sessionId, authToken] = await Promise.all([getActiveSessionId(), getAuthToken()]);
+
+    if (authToken) {
+      try { await apiRequest("/auth/logout", { method: "POST", accessToken: authToken }); }
+      catch (error) { console.log("Erro ao avisar logout de usuário:", error); }
+    }
 
     if (sessionId) {
       try {
@@ -111,6 +117,7 @@ export default function Home() {
     }
 
     await AsyncStorage.removeItem(USER_STORAGE_KEY);
+    await clearAuthToken();
 
     setProfile(null);
     setHasInstagramConnected(false);
@@ -120,6 +127,7 @@ export default function Home() {
   } catch (error) {
     console.log("Erro ao sair:", error);
     await AsyncStorage.removeItem(USER_STORAGE_KEY);
+    await clearAuthToken();
     router.replace("/");
   }
 }

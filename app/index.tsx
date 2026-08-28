@@ -1,5 +1,5 @@
-import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Linking from "expo-linking";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -19,9 +19,9 @@ import {
   View
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { ApiError, apiRequest } from "../services/http";
+import { apiRequest, ApiError } from "../services/http";
+import { AuthUser, clearAuthToken, getAuthToken, saveAuthToken } from "../services/auth-session";
 import {
-  getActiveSessionId,
   saveConnectedAccount,
 } from "../services/session";
 
@@ -29,6 +29,9 @@ WebBrowser.maybeCompleteAuthSession();
 
 const USER_STORAGE_KEY = "@user_name";
 const REDIRECT_URI = Linking.createURL("instagram-auth");
+const GOOGLE_REDIRECT_URI = Linking.createURL("google-auth");
+
+type AuthResponse = { user: AuthUser; accessToken: string };
 
 export default function Login() {
   const router = useRouter();
@@ -42,21 +45,23 @@ export default function Login() {
 
    const verificarLogin = useCallback(async () => {
   try {
-    const [savedName, sessionId] = await Promise.all([
+    const [savedName, authToken] = await Promise.all([
       AsyncStorage.getItem(USER_STORAGE_KEY),
-      getActiveSessionId(),
+      getAuthToken(),
     ]);
 
     if (savedName && savedName.trim()) {
       setNome(savedName);
     }
 
-    if (sessionId && addAccount !== "1") {
+    if (authToken && addAccount !== "1") {
       try {
-        await apiRequest("/me/instagram/profile", { sessionId });
+        const { user } = await apiRequest<{ user: AuthUser }>("/auth/me", { accessToken: authToken });
+        await AsyncStorage.setItem(USER_STORAGE_KEY, user.name);
         router.replace("/home");
       } catch (error) {
-        if (!(error instanceof ApiError && error.status === 401)) throw error;
+        if (error instanceof ApiError && error.status === 401) await clearAuthToken();
+        else throw error;
       }
     }
   } catch (error) {
@@ -75,6 +80,23 @@ export default function Login() {
       const username = parsed.queryParams?.username;
       const profilePictureUrl = parsed.queryParams?.profile_picture_url;
       const error = parsed.queryParams?.error;
+      const provider = parsed.queryParams?.provider;
+      const authCode = parsed.queryParams?.auth_code;
+
+      if (provider === "google" && success === "true" && typeof authCode === "string") {
+        const exchange = await apiRequest<{ accessToken: string }>("/auth/google/exchange", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code: authCode }),
+        });
+        const accessToken = exchange.accessToken;
+        await saveAuthToken(accessToken);
+        const { user } = await apiRequest<{ user: AuthUser }>("/auth/me", { accessToken });
+        await AsyncStorage.setItem(USER_STORAGE_KEY, user.name);
+        setSubmitting(false);
+        router.replace("/home");
+        return;
+      }
 
       if (success === "true" && typeof sessionId === "string") {
         const storedName = await AsyncStorage.getItem(USER_STORAGE_KEY);
@@ -141,21 +163,37 @@ export default function Login() {
 
     try {
       setSubmitting(true);
-      await AsyncStorage.setItem(USER_STORAGE_KEY, nome.trim());
+      const data = await apiRequest<AuthResponse>("/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: nome.trim(), password: senha }),
+      });
+      await Promise.all([
+        saveAuthToken(data.accessToken),
+        AsyncStorage.setItem(USER_STORAGE_KEY, data.user.name),
+      ]);
       router.replace("/home");
     } catch (error) {
       console.log("Erro ao salvar usuário:", error);
-      Alert.alert("Erro", "Não foi possível entrar agora.");
+      Alert.alert("Não foi possível entrar", error instanceof Error ? error.message : "Tente novamente.");
     } finally {
       setSubmitting(false);
     }
   }
 
-  function handleEntrarGoogle() {
-    Alert.alert(
-      "Login com Google",
-      "O botão está pronto. Para ativar o login, ainda é necessário cadastrar as credenciais OAuth do Google no projeto."
-    );
+  async function handleEntrarGoogle() {
+    try {
+      setSubmitting(true);
+      const data = await apiRequest<{ authUrl: string }>(
+        `/auth/google/login?redirect_back=${encodeURIComponent(GOOGLE_REDIRECT_URI)}`
+      );
+      const result = await WebBrowser.openAuthSessionAsync(data.authUrl, GOOGLE_REDIRECT_URI);
+      if (result.type === "success" && result.url) await handleDeepLink(result.url);
+      else setSubmitting(false);
+    } catch (error) {
+      setSubmitting(false);
+      Alert.alert("Login com Google", error instanceof Error ? error.message : "Não foi possível entrar com Google.");
+    }
   }
 
   async function handleEntrarInstagram() {
@@ -167,8 +205,11 @@ export default function Login() {
     try {
       setSubmitting(true);
 
+      const authToken = await getAuthToken();
+
       const data = await apiRequest<{ authUrl: string }>(
-        `/auth/app/instagram/login?redirect_back=${encodeURIComponent(REDIRECT_URI)}`
+        `/auth/app/instagram/login?redirect_back=${encodeURIComponent(REDIRECT_URI)}`,
+        { accessToken: authToken }
       );
 
       if (!data?.authUrl) throw new Error("Falha ao iniciar login com Instagram");
@@ -236,6 +277,14 @@ export default function Login() {
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
+          <View style={styles.topArea}>
+            <View style={styles.logoCircle}>
+              <Text style={styles.logoIcon}>✨</Text>
+            </View>
+
+            <Text style={styles.appTitle}>Analisador IA</Text>
+            <Text style={styles.appSubtitle}>Decisões melhores começam com bons insights.</Text>
+          </View>
 
           <View style={styles.card}>
             <View style={styles.mockProfile}>
@@ -274,7 +323,7 @@ export default function Login() {
             <View style={styles.inputWrapper}>
               <View style={styles.labelRow}>
                 <Text style={styles.inputLabel}>Senha</Text>
-                <TouchableOpacity onPress={() => Alert.alert("Recuperar senha", "A recuperação de senha será disponibilizada em breve.")}>
+                <TouchableOpacity onPress={() => router.push("/recuperar-senha" as any)}>
                   <Text style={styles.forgotText}>Esqueci minha senha</Text>
                 </TouchableOpacity>
               </View>
@@ -315,6 +364,11 @@ export default function Login() {
               ) : (
                 <Text style={styles.primaryButtonText}>Entrar</Text>
               )}
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.createAccountRow} onPress={() => router.push("/cadastro" as any)}>
+              <Text style={styles.createAccountText}>Não tem uma conta? </Text>
+              <Text style={styles.createAccountLink}>Criar conta</Text>
             </TouchableOpacity>
 
             <View style={styles.dividerRow}>
@@ -645,5 +699,23 @@ mockAvatarIcon: {
     textAlign: "center",
     paddingHorizontal: 28,
     marginTop: 14,
+  },
+
+  createAccountRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    marginTop: 14,
+    marginBottom: 2,
+  },
+
+  createAccountText: {
+    color: "#6F6F6F",
+    fontSize: 13,
+  },
+
+  createAccountLink: {
+    color: "#962fbf",
+    fontSize: 13,
+    fontWeight: "800",
   },
 });

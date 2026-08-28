@@ -2,6 +2,21 @@ import { GoogleGenAI } from "@google/genai";
 import cors from "cors";
 import "dotenv/config";
 import express from "express";
+import { randomUUID } from "node:crypto";
+import {
+  bearerToken,
+  comparePassword,
+  consumePasswordReset,
+  createAccessToken,
+  hashPassword,
+  issuePasswordReset,
+  normalizeEmail,
+  publicUser,
+  requireUser,
+  validatePassword,
+  verifyAccessToken,
+} from "./auth.js";
+import { query } from "./db.js";
 import { MemoryOneTimeStateStore, MemorySessionStore } from "./session-store.js";
 
 const PORT = process.env.PORT || 3333;
@@ -267,6 +282,183 @@ function healthResponse(req, res) {
     baseUrl: BASE_URL,
   });
 }
+
+function authResponse(user) {
+  return { user: publicUser(user), accessToken: createAccessToken(user) };
+}
+
+function databaseError(res, error) {
+  if (error?.code === "DATABASE_NOT_CONFIGURED") {
+    return res.status(503).json({ error: "Banco de dados não configurado" });
+  }
+  console.error("Erro de autenticação:", error);
+  return res.status(500).json({ error: "Não foi possível concluir a autenticação" });
+}
+
+async function sendPasswordResetEmail(email, token) {
+  if (!process.env.RESEND_API_KEY || !process.env.EMAIL_FROM) return false;
+  const resetBase = process.env.RESET_URL_BASE || "analisador://redefinir-senha";
+  const resetUrl = `${resetBase}${resetBase.includes("?") ? "&" : "?"}token=${encodeURIComponent(token)}`;
+  await fetchJson("https://api.resend.com/emails", {
+    method: "POST",
+    headers: { authorization: `Bearer ${process.env.RESEND_API_KEY}`, "content-type": "application/json" },
+    body: JSON.stringify({
+      from: process.env.EMAIL_FROM,
+      to: [email],
+      subject: "Redefina sua senha do Analisador",
+      html: `<p>Recebemos uma solicitação para redefinir sua senha.</p><p><a href="${resetUrl}">Criar nova senha</a></p><p>Este link expira em 30 minutos.</p>`,
+    }),
+  });
+  return true;
+}
+
+/* ===========================================================
+   AUTENTICAÇÃO DO USUÁRIO
+=========================================================== */
+
+app.post("/auth/register", async (req, res) => {
+  try {
+    const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
+    const email = normalizeEmail(req.body?.email);
+    const password = req.body?.password;
+    if (name.length < 2 || !email.includes("@") || !validatePassword(password)) {
+      return res.status(400).json({ error: "Informe nome, e-mail válido e senha com pelo menos 8 caracteres" });
+    }
+    const passwordHash = await hashPassword(password);
+    const result = await query(
+      `INSERT INTO users (id, name, email, password_hash)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id, name, email, avatar_url`,
+      [randomUUID(), name, email, passwordHash]
+    );
+    return res.status(201).json(authResponse(result.rows[0]));
+  } catch (error) {
+    if (error?.code === "23505") return res.status(409).json({ error: "Este e-mail já está cadastrado" });
+    return databaseError(res, error);
+  }
+});
+
+app.post("/auth/login", async (req, res) => {
+  try {
+    const email = normalizeEmail(req.body?.email);
+    const password = req.body?.password;
+    if (!email || typeof password !== "string") return res.status(400).json({ error: "Informe e-mail e senha" });
+    const result = await query("SELECT * FROM users WHERE email = $1", [email]);
+    const user = result.rows[0];
+    if (!user || !(await comparePassword(password, user.password_hash))) {
+      return res.status(401).json({ error: "E-mail ou senha incorretos" });
+    }
+    return res.json(authResponse(user));
+  } catch (error) {
+    return databaseError(res, error);
+  }
+});
+
+app.get("/auth/me", requireUser, (req, res) => res.json({ user: publicUser(req.user) }));
+
+app.post("/auth/logout", (_req, res) => res.json({ success: true }));
+
+app.post("/auth/forgot-password", async (req, res) => {
+  try {
+    const email = normalizeEmail(req.body?.email);
+    if (email) {
+      const result = await query("SELECT id FROM users WHERE email = $1", [email]);
+      if (result.rows[0]) {
+        const token = await issuePasswordReset(result.rows[0].id);
+        await sendPasswordResetEmail(email, token);
+        if (process.env.RESET_TOKEN_LOG === "true") console.log(`Token de recuperação para ${email}: ${token}`);
+      }
+    }
+    return res.json({ message: "Se o e-mail estiver cadastrado, enviaremos as instruções de recuperação." });
+  } catch (error) {
+    return databaseError(res, error);
+  }
+});
+
+app.post("/auth/reset-password", async (req, res) => {
+  try {
+    const token = typeof req.body?.token === "string" ? req.body.token.trim() : "";
+    const password = req.body?.password;
+    if (!token || !validatePassword(password)) return res.status(400).json({ error: "Token e nova senha com pelo menos 8 caracteres são obrigatórios" });
+    const changed = await consumePasswordReset(token, await hashPassword(password));
+    if (!changed) return res.status(400).json({ error: "Token inválido ou expirado" });
+    return res.json({ success: true });
+  } catch (error) {
+    return databaseError(res, error);
+  }
+});
+
+app.get("/auth/google/login", async (req, res) => {
+  try {
+    if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
+      return res.status(503).json({ error: "Login com Google não configurado" });
+    }
+    const redirectBack = typeof req.query.redirect_back === "string" ? req.query.redirect_back.trim() : "";
+    if (!redirectBack) return res.status(400).json({ error: "redirect_back é obrigatório" });
+    const state = await oauthStateStore.create({ redirectBack, provider: "google" });
+    const redirectUri = `${BASE_URL}/auth/google/callback`;
+    const params = new URLSearchParams({
+      client_id: process.env.GOOGLE_CLIENT_ID,
+      redirect_uri: redirectUri,
+      response_type: "code",
+      scope: "openid email profile",
+      state,
+      access_type: "offline",
+      prompt: "select_account",
+    });
+    return res.json({ authUrl: `https://accounts.google.com/o/oauth2/v2/auth?${params}` });
+  } catch (error) {
+    return databaseError(res, error);
+  }
+});
+
+app.get("/auth/google/callback", async (req, res) => {
+  const oauthState = await oauthStateStore.consume(req.query.state);
+  const redirectBack = oauthState?.provider === "google" ? oauthState.redirectBack : null;
+  if (!redirectBack) return res.status(400).json({ error: "Estado OAuth inválido ou expirado" });
+  if (req.query.error || !req.query.code) {
+    return res.redirect(`${redirectBack}?provider=google&success=false&error=${encodeURIComponent(req.query.error || "Código não recebido")}`);
+  }
+  try {
+    const tokenData = await fetchJson("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        code: String(req.query.code),
+        client_id: process.env.GOOGLE_CLIENT_ID,
+        client_secret: process.env.GOOGLE_CLIENT_SECRET,
+        redirect_uri: `${BASE_URL}/auth/google/callback`,
+        grant_type: "authorization_code",
+      }),
+    });
+    const googleUser = await fetchJson("https://openidconnect.googleapis.com/v1/userinfo", {
+      headers: { authorization: `Bearer ${tokenData.access_token}` },
+    });
+    const email = normalizeEmail(googleUser.email);
+    const result = await query(
+      `INSERT INTO users (id, name, email, google_id, avatar_url)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (email) DO UPDATE SET
+         google_id = COALESCE(users.google_id, EXCLUDED.google_id),
+         avatar_url = COALESCE(EXCLUDED.avatar_url, users.avatar_url), updated_at = NOW()
+       RETURNING id, name, email, avatar_url`,
+      [randomUUID(), googleUser.name || email.split("@")[0], email, googleUser.sub, googleUser.picture || null]
+    );
+    const exchangeCode = await oauthStateStore.create({ provider: "google_exchange", accessToken: createAccessToken(result.rows[0]) });
+    return res.redirect(`${redirectBack}?provider=google&success=true&auth_code=${encodeURIComponent(exchangeCode)}`);
+  } catch (error) {
+    console.error("Erro OAuth Google:", error);
+    return res.redirect(`${redirectBack}?provider=google&success=false&error=${encodeURIComponent("Não foi possível entrar com Google")}`);
+  }
+});
+
+app.post("/auth/google/exchange", async (req, res) => {
+  const exchange = await oauthStateStore.consume(req.body?.code);
+  if (exchange?.provider !== "google_exchange" || !exchange.accessToken) {
+    return res.status(400).json({ error: "Código de autenticação inválido ou expirado" });
+  }
+  return res.json({ accessToken: exchange.accessToken });
+});
 
 app.get("/", healthResponse);
 app.get("/health", healthResponse);
@@ -542,10 +734,20 @@ app.get("/auth/app/instagram/login", async (req, res) => {
       return res.status(500).json({ error: "APP_DEEP_LINK não configurado" });
     }
 
-    const state = await oauthStateStore.create({ redirectBack });
+    let userId = null;
+    const authToken = bearerToken(req);
+    if (authToken) {
+      try {
+        userId = verifyAccessToken(authToken).sub;
+      } catch {
+        return res.status(401).json({ error: "Sessão de usuário inválida ou expirada" });
+      }
+    }
+
+    const state = await oauthStateStore.create({ redirectBack, provider: "instagram", userId });
 
     const url =
-      `https://api.instagram.com/oauth/authorize` +
+      `https://www.instagram.com/oauth/authorize` +
       `?client_id=${process.env.INSTAGRAM_CLIENT_ID}` +
       `&redirect_uri=${redirectUri}` +
       `&scope=instagram_business_basic,instagram_business_manage_messages,instagram_business_manage_comments` +
@@ -566,7 +768,7 @@ app.get("/auth/app/instagram/callback", async (req, res) => {
     const { code, error, error_reason, error_description, state } = req.query;
 
     const oauthState = await oauthStateStore.consume(state);
-    const redirectBack = oauthState?.redirectBack;
+    const redirectBack = oauthState?.provider === "instagram" ? oauthState.redirectBack : null;
 
     if (!redirectBack) {
       return res.status(400).json({ error: "Estado OAuth inválido ou expirado" });
@@ -636,7 +838,19 @@ app.get("/auth/app/instagram/callback", async (req, res) => {
     const sessionId = await sessionStore.create({
       accessToken,
       profile: profileData,
+      userId: oauthState.userId || null,
     });
+
+    if (oauthState.userId) {
+      await query(
+        `INSERT INTO instagram_accounts
+          (id, user_id, instagram_user_id, username, access_token)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (user_id, instagram_user_id) DO UPDATE SET
+          username = EXCLUDED.username, access_token = EXCLUDED.access_token, updated_at = NOW()`,
+        [randomUUID(), oauthState.userId, String(profileData.id), profileData.username || "instagram", accessToken]
+      );
+    }
 
     return res.redirect(
       `${redirectBack}?success=true` +

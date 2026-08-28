@@ -34,6 +34,20 @@ test("health check responde com sucesso", async () => {
   assert.equal(body.ok, true);
 });
 
+test("cadastro informa quando o banco ainda não foi configurado", async () => {
+  const response = await fetch(`http://127.0.0.1:${PORT}/auth/register`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name: "Teste", email: "teste@example.com", password: "senha-segura" }),
+  });
+  assert.equal(response.status, 503);
+});
+
+test("Google informa configuração ausente sem iniciar OAuth incompleto", async () => {
+  const response = await fetch(`http://127.0.0.1:${PORT}/auth/google/login?redirect_back=analisador%3A%2F%2Fgoogle-auth`);
+  assert.equal(response.status, 503);
+});
+
 test("endpoint de IA rejeita requisição sem sessão", async () => {
   const response = await fetch(`http://127.0.0.1:${PORT}/ia/photo`, {
     method: "POST",
@@ -65,6 +79,7 @@ test("OAuth state não pode ser reutilizado", async () => {
     `http://127.0.0.1:${PORT}/auth/app/instagram/login?redirect_back=${encodeURIComponent("analisador://instagram-auth")}`
   );
   const { authUrl } = await loginResponse.json();
+  assert.equal(new URL(authUrl).origin, "https://www.instagram.com");
   const state = new URL(authUrl).searchParams.get("state");
 
   const first = await fetch(

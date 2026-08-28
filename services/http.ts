@@ -14,7 +14,9 @@ export class ApiError extends Error {
 }
 
 function messageForStatus(status: number, serverMessage?: string): string {
-  if (status === 401) return "Sua sessão expirou. Conecte o Instagram novamente.";
+  if (serverMessage) return serverMessage;
+  if (status === 400) return "Confira os dados informados e tente novamente.";
+  if (status === 401) return "Sua sessão expirou. Entre novamente.";
   if (status === 403) return "Você não tem permissão para realizar esta ação.";
   if (status === 404) return "O recurso solicitado não está disponível.";
   if (status === 429) return "Muitas solicitações. Aguarde um momento e tente novamente.";
@@ -24,9 +26,9 @@ function messageForStatus(status: number, serverMessage?: string): string {
 
 export async function apiRequest<T>(
   path: string,
-  options: RequestInit & { sessionId?: string | null; timeoutMs?: number } = {}
+  options: RequestInit & { sessionId?: string | null; accessToken?: string | null; timeoutMs?: number } = {}
 ): Promise<T> {
-  const { sessionId, timeoutMs = DEFAULT_TIMEOUT_MS, headers, ...requestInit } = options;
+  const { sessionId, accessToken, timeoutMs = DEFAULT_TIMEOUT_MS, headers, ...requestInit } = options;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -36,6 +38,7 @@ export async function apiRequest<T>(
       signal: controller.signal,
       headers: {
         ...(sessionId ? { "x-session-id": sessionId } : {}),
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
         ...headers,
       },
     });

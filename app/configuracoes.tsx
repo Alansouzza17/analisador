@@ -2,6 +2,7 @@ import { apiRequest } from "@/services/http";
 import { getActiveSessionId, removeConnectedAccount } from "@/services/session";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { clearAuthToken, getAuthToken } from "@/services/auth-session";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useState } from "react";
@@ -25,7 +26,12 @@ export default function Configuracoes() {
 
   async function handleLogout() {
     try {
-      const sessionId = await getActiveSessionId();
+      const [sessionId, authToken] = await Promise.all([getActiveSessionId(), getAuthToken()]);
+
+      if (authToken) {
+        try { await apiRequest("/auth/logout", { method: "POST", accessToken: authToken }); }
+        catch (error) { console.log("Erro ao avisar logout de usuário:", error); }
+      }
 
       if (sessionId) {
         try {
@@ -42,6 +48,7 @@ export default function Configuracoes() {
       }
 
       await AsyncStorage.removeItem("@user_name");
+      await clearAuthToken();
       router.replace("/");
     } catch {
       Alert.alert("Erro", "Não foi possível sair da conta");

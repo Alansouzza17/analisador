@@ -10,10 +10,11 @@ e a API Gemini.
 - npm
 - Expo Go ou um emulador Android/iOS
 
-O projeto não usa banco de dados. O backend usa `MemorySessionStore` por padrão,
-com sessões que expiram após 24 horas. A interface `SessionStore` permite trocar
-essa implementação futuramente sem alterar as rotas. Reiniciar ou escalar o
-servidor com o armazenamento em memória invalida as sessões atuais.
+Usuários e contas conectadas são persistidos no PostgreSQL. O login por e-mail
+usa bcrypt e JWT, armazenado no SecureStore do aparelho. O
+`MemorySessionStore` continua sendo usado somente para a compatibilidade das
+sessões Instagram atuais; reiniciar o servidor exige reconectar o Instagram,
+mas não desconecta a conta principal do usuário.
 
 No aplicativo mobile, identificadores de sessão são armazenados no SecureStore.
 Metadados não sensíveis permanecem no AsyncStorage. Sessões de versões antigas
@@ -30,8 +31,23 @@ Copie `.env.example` para `.env` e `server/.env.example` para `server/.env`.
 Preencha as credenciais reais somente no arquivo local `server/.env`, que é
 ignorado pelo Git.
 
-Mantenha `SESSION_STORE=memory` no desenvolvimento local. Outros drivers ainda
-não estão implementados e são rejeitados explicitamente durante a inicialização.
+Crie um PostgreSQL, defina `DATABASE_URL` e `JWT_SECRET`, instale o backend e
+aplique a migration sem apagar tabelas existentes:
+
+```bash
+cd server
+npm ci
+npm run migrate
+```
+
+Para Google, crie um cliente OAuth Web e cadastre
+`<BASE_URL>/auth/google/callback` como URI autorizada. Configure
+`GOOGLE_CLIENT_ID` e `GOOGLE_CLIENT_SECRET` no backend.
+
+Para recuperação real de senha, configure `RESEND_API_KEY`, `EMAIL_FROM` e,
+opcionalmente, `RESET_URL_BASE`. Sem provedor de e-mail, a rota mantém a
+resposta neutra por segurança, mas nenhum e-mail é enviado. Apenas em ambiente
+local pode-se ativar `RESET_TOKEN_LOG=true` para testar o token pelo terminal.
 
 No desenvolvimento em um aparelho físico, `EXPO_PUBLIC_API_URL` deve apontar
 para um endereço do backend acessível pelo aparelho, e não para `localhost`.
@@ -75,4 +91,4 @@ npm run check
 npm test
 ```
 
-Não há migrations ou serviço de banco de dados para iniciar neste repositório.
+Migration disponível: `server/migrations/001_auth.sql`.
