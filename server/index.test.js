@@ -17,6 +17,7 @@ test.before(async () => {
       DATABASE_URL: "",
       GOOGLE_CLIENT_ID: "",
       GOOGLE_CLIENT_SECRET: "",
+      APP_DEEP_LINK: "analisador://instagram-auth",
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -118,6 +119,62 @@ test("OAuth state inválido é rejeitado", async () => {
     { redirect: "manual" }
   );
   assert.equal(response.status, 400);
+});
+
+test("Instagram rejeita redirect_back web fora da allowlist", async () => {
+  const response = await fetch(
+    `http://127.0.0.1:${PORT}/auth/app/instagram/login?redirect_back=${encodeURIComponent("https://site-malicioso.example")}`
+  );
+
+  assert.equal(response.status, 400);
+  assert.deepEqual(await response.json(), { error: "redirect_back não autorizado" });
+});
+
+test("Instagram rejeita redirect_back relativo sem protocolo", async () => {
+  const response = await fetch(
+    `http://127.0.0.1:${PORT}/auth/app/instagram/login?redirect_back=${encodeURIComponent("analisador-nine.vercel.app")}`
+  );
+
+  assert.equal(response.status, 400);
+});
+
+test("Instagram cancelado na web retorna para a Vercel", async () => {
+  const redirectBack = "https://analisador-nine.vercel.app";
+  const loginResponse = await fetch(
+    `http://127.0.0.1:${PORT}/auth/app/instagram/login?redirect_back=${encodeURIComponent(redirectBack)}`
+  );
+  const { authUrl } = await loginResponse.json();
+  const state = new URL(authUrl).searchParams.get("state");
+
+  const callbackResponse = await fetch(
+    `http://127.0.0.1:${PORT}/auth/app/instagram/callback?state=${state}&error=access_denied&error_description=${encodeURIComponent("Login cancelado")}`,
+    { redirect: "manual" }
+  );
+  const location = new URL(callbackResponse.headers.get("location"));
+
+  assert.equal(callbackResponse.status, 302);
+  assert.equal(location.origin, redirectBack);
+  assert.equal(location.searchParams.get("success"), "false");
+  assert.equal(location.searchParams.get("error"), "Login cancelado");
+});
+
+test("Instagram com erro no mobile retorna para o deep link do app", async () => {
+  const redirectBack = "analisador://instagram-auth";
+  const loginResponse = await fetch(
+    `http://127.0.0.1:${PORT}/auth/app/instagram/login?redirect_back=${encodeURIComponent(redirectBack)}`
+  );
+  const { authUrl } = await loginResponse.json();
+  const state = new URL(authUrl).searchParams.get("state");
+
+  const callbackResponse = await fetch(
+    `http://127.0.0.1:${PORT}/auth/app/instagram/callback?state=${state}&error=access_denied`,
+    { redirect: "manual" }
+  );
+  const location = callbackResponse.headers.get("location");
+
+  assert.equal(callbackResponse.status, 302);
+  assert.match(location || "", /^analisador:\/\/instagram-auth\?/);
+  assert.equal(new URL(location).searchParams.get("success"), "false");
 });
 
 test("OAuth state não pode ser reutilizado", async () => {

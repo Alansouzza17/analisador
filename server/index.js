@@ -52,6 +52,32 @@ function isOriginAllowed(origin) {
   return !origin || allowedOrigins.has(normalizeOrigin(origin));
 }
 
+function validateInstagramRedirectBack(value) {
+  if (typeof value !== "string" || !value.trim()) return null;
+
+  try {
+    const redirectUrl = new URL(value.trim());
+    if (redirectUrl.username || redirectUrl.password || redirectUrl.search || redirectUrl.hash) {
+      return null;
+    }
+
+    if (redirectUrl.protocol === "http:" || redirectUrl.protocol === "https:") {
+      if (!allowedOrigins.has(redirectUrl.origin)) return null;
+      const pathname = redirectUrl.pathname.replace(/\/+$/, "");
+      return `${redirectUrl.origin}${pathname}`;
+    }
+
+    const mobileRedirectUrl = new URL(APP_DEEP_LINK);
+    return redirectUrl.href === mobileRedirectUrl.href ? mobileRedirectUrl.href : null;
+  } catch {
+    return null;
+  }
+}
+
+function instagramRedirectUrl(redirectBack, params) {
+  return `${redirectBack}?${new URLSearchParams(params)}`;
+}
+
 app.use((req, res, next) => {
   const origin = req.get("Origin");
   if (isOriginAllowed(origin)) return next();
@@ -752,13 +778,14 @@ app.get("/auth/app/instagram/login", async (req, res) => {
       `${BASE_URL}/auth/app/instagram/callback`
     );
 
-    const redirectBack =
+    const requestedRedirectBack =
       typeof req.query.redirect_back === "string" && req.query.redirect_back.trim()
         ? req.query.redirect_back.trim()
-        : process.env.APP_DEEP_LINK;
+        : APP_DEEP_LINK;
+    const redirectBack = validateInstagramRedirectBack(requestedRedirectBack);
 
     if (!redirectBack) {
-      return res.status(500).json({ error: "APP_DEEP_LINK não configurado" });
+      return res.status(400).json({ error: "redirect_back não autorizado" });
     }
 
     let userId = null;
@@ -791,30 +818,30 @@ app.get("/auth/app/instagram/login", async (req, res) => {
 });
 
 app.get("/auth/app/instagram/callback", async (req, res) => {
+  let redirectBack = APP_DEEP_LINK;
+
   try {
     const { code, error, error_reason, error_description, state } = req.query;
 
     const oauthState = await oauthStateStore.consume(state);
-    const redirectBack = oauthState?.provider === "instagram" ? oauthState.redirectBack : null;
+    redirectBack = oauthState?.provider === "instagram" ? oauthState.redirectBack : null;
 
     if (!redirectBack) {
       return res.status(400).json({ error: "Estado OAuth inválido ou expirado" });
     }
 
     if (error) {
-      return res.redirect(
-        `${redirectBack}?success=false&error=${encodeURIComponent(
-          error_description || error_reason || "Login não autorizado"
-        )}`
-      );
+      return res.redirect(instagramRedirectUrl(redirectBack, {
+        success: "false",
+        error: error_description || error_reason || "Login não autorizado",
+      }));
     }
 
     if (!code) {
-      return res.redirect(
-        `${redirectBack}?success=false&error=${encodeURIComponent(
-          "Código não recebido"
-        )}`
-      );
+      return res.redirect(instagramRedirectUrl(redirectBack, {
+        success: "false",
+        error: "Código não recebido",
+      }));
     }
 
     const redirectUri = `${BASE_URL}/auth/app/instagram/callback`;
@@ -837,13 +864,10 @@ app.get("/auth/app/instagram/callback", async (req, res) => {
     const tokenData = await tokenResponse.json();
 
     if (!tokenResponse.ok) {
-      return res.redirect(
-        `${redirectBack}?success=false&error=${encodeURIComponent(
-          tokenData?.error_message ||
-            tokenData?.error_type ||
-            "Erro ao obter token"
-        )}`
-      );
+      return res.redirect(instagramRedirectUrl(redirectBack, {
+        success: "false",
+        error: tokenData?.error_message || tokenData?.error_type || "Erro ao obter token",
+      }));
     }
 
     const accessToken = tokenData.access_token;
@@ -855,11 +879,10 @@ app.get("/auth/app/instagram/callback", async (req, res) => {
     const profileData = await profileResponse.json();
 
     if (!profileResponse.ok) {
-      return res.redirect(
-        `${redirectBack}?success=false&error=${encodeURIComponent(
-          profileData?.error?.message || "Erro ao buscar perfil"
-        )}`
-      );
+      return res.redirect(instagramRedirectUrl(redirectBack, {
+        success: "false",
+        error: profileData?.error?.message || "Erro ao buscar perfil",
+      }));
     }
 
     const sessionId = await sessionStore.create({
@@ -879,24 +902,20 @@ app.get("/auth/app/instagram/callback", async (req, res) => {
       );
     }
 
-    return res.redirect(
-      `${redirectBack}?success=true` +
-        `&session_id=${encodeURIComponent(sessionId)}` +
-        `&user_id=${encodeURIComponent(profileData.id || "")}` +
-        `&username=${encodeURIComponent(profileData.username || "")}` +
-        `&profile_picture_url=${encodeURIComponent(profileData.profile_picture_url || "")}`
-    );
+    return res.redirect(instagramRedirectUrl(redirectBack, {
+      success: "true",
+      session_id: sessionId,
+      user_id: profileData.id || "",
+      username: profileData.username || "",
+      profile_picture_url: profileData.profile_picture_url || "",
+    }));
   } catch (error) {
     console.error("Erro login:", error);
 
-    const redirectBack =
-      process.env.APP_DEEP_LINK || "analisador://instagram-auth";
-
-    return res.redirect(
-      `${redirectBack}?success=false&error=${encodeURIComponent(
-        error.message || "Erro no callback"
-      )}`
-    );
+    return res.redirect(instagramRedirectUrl(redirectBack || APP_DEEP_LINK, {
+      success: "false",
+      error: error.message || "Erro no callback",
+    }));
   }
 });
 /* ===========================================================

@@ -1,5 +1,5 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Linking from "expo-linking";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -19,8 +19,8 @@ import {
   View
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { apiRequest, ApiError } from "../services/http";
 import { AuthUser, clearAuthToken, getAuthToken, saveAuthToken } from "../services/auth-session";
+import { ApiError, apiRequest } from "../services/http";
 import {
   saveConnectedAccount,
 } from "../services/session";
@@ -28,15 +28,22 @@ import {
 WebBrowser.maybeCompleteAuthSession();
 
 const USER_STORAGE_KEY = "@user_name";
-const WEB_APP_URL = process.env.EXPO_PUBLIC_WEB_URL?.trim().replace(/\/+$/, "");
-const REDIRECT_URI =
-  Platform.OS === "web"
-    ? WEB_APP_URL || Linking.createURL("")
-    : Linking.createURL("instagram-auth");
-const GOOGLE_REDIRECT_URI =
-  Platform.OS === "web"
-    ? WEB_APP_URL || Linking.createURL("")
-    : Linking.createURL("google-auth");
+
+function getOAuthRedirectUri(nativePath: string): string {
+  if (Platform.OS !== "web") return Linking.createURL(nativePath);
+
+  const configuredUrl = process.env.EXPO_PUBLIC_WEB_URL?.trim();
+  const candidate = configuredUrl || Linking.createURL("");
+
+  try {
+    const url = new URL(candidate);
+    const isLocalDevelopment = url.hostname === "localhost" || url.hostname === "127.0.0.1";
+    if (url.protocol !== "https:" && !isLocalDevelopment) throw new Error();
+    return url.origin;
+  } catch {
+    throw new Error("EXPO_PUBLIC_WEB_URL deve ser uma URL HTTPS completa.");
+  }
+}
 
 type AuthResponse = { user: AuthUser; accessToken: string };
 
@@ -191,10 +198,11 @@ export default function Login() {
   async function handleEntrarGoogle() {
     try {
       setSubmitting(true);
+      const googleRedirectUri = getOAuthRedirectUri("google-auth");
       const data = await apiRequest<{ authUrl: string }>(
-        `/auth/google/login?redirect_back=${encodeURIComponent(GOOGLE_REDIRECT_URI)}`
+        `/auth/google/login?redirect_back=${encodeURIComponent(googleRedirectUri)}`
       );
-      const result = await WebBrowser.openAuthSessionAsync(data.authUrl, GOOGLE_REDIRECT_URI);
+      const result = await WebBrowser.openAuthSessionAsync(data.authUrl, googleRedirectUri);
       if (result.type === "success" && result.url) await handleDeepLink(result.url);
       else setSubmitting(false);
     } catch (error) {
@@ -213,9 +221,10 @@ export default function Login() {
       setSubmitting(true);
 
       const authToken = await getAuthToken();
+      const instagramRedirectUri = getOAuthRedirectUri("instagram-auth");
 
       const data = await apiRequest<{ authUrl: string }>(
-        `/auth/app/instagram/login?redirect_back=${encodeURIComponent(REDIRECT_URI)}`,
+        `/auth/app/instagram/login?redirect_back=${encodeURIComponent(instagramRedirectUri)}`,
         { accessToken: authToken }
       );
 
@@ -223,7 +232,7 @@ export default function Login() {
 
       const result = await WebBrowser.openAuthSessionAsync(
         data.authUrl,
-        REDIRECT_URI
+        instagramRedirectUri
       );
 
       if (result.type === "success" && "url" in result && result.url) {
@@ -289,8 +298,8 @@ export default function Login() {
               <Text style={styles.logoIcon}>✨</Text>
             </View>
 
-            <Text style={styles.appTitle}>Analisador IA</Text>
-            <Text style={styles.appSubtitle}>Decisões melhores começam com bons insights.</Text>
+            <Text style={styles.appTitle}>Analisador</Text>
+            <Text style={styles.appSubtitle}>Entre e veja quem não segue de volta.</Text>
           </View>
 
           <View style={styles.card}>
