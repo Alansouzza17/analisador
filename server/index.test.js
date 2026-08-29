@@ -8,7 +8,16 @@ let server;
 test.before(async () => {
   server = spawn(process.execPath, ["index.js"], {
     cwd: import.meta.dirname,
-    env: { ...process.env, PORT: String(PORT), BASE_URL: `http://127.0.0.1:${PORT}` },
+    env: {
+      ...process.env,
+      PORT: String(PORT),
+      BASE_URL: `http://127.0.0.1:${PORT}`,
+      CORS_ORIGIN: " http://localhost:8081 , https://analisador-nine.vercel.app/ ",
+      CORS_ORIGINS: "",
+      DATABASE_URL: "",
+      GOOGLE_CLIENT_ID: "",
+      GOOGLE_CLIENT_SECRET: "",
+    },
     stdio: ["ignore", "pipe", "pipe"],
   });
 
@@ -32,6 +41,43 @@ test("health check responde com sucesso", async () => {
 
   assert.equal(response.status, 200);
   assert.equal(body.ok, true);
+});
+
+test("CORS aceita a origem web de produção configurada", async () => {
+  const origin = "https://analisador-nine.vercel.app";
+  const response = await fetch(`http://127.0.0.1:${PORT}/health`, {
+    headers: { Origin: origin },
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("access-control-allow-origin"), origin);
+});
+
+test("CORS rejeita uma origem web não cadastrada sem derrubar o servidor", async () => {
+  const response = await fetch(`http://127.0.0.1:${PORT}/health`, {
+    headers: { Origin: "https://origem-nao-autorizada.example" },
+  });
+
+  assert.equal(response.status, 403);
+  assert.deepEqual(await response.json(), { error: "Origem não permitida pelo CORS" });
+});
+
+test("CORS responde ao preflight com métodos e headers usados pelo frontend", async () => {
+  const origin = "https://analisador-nine.vercel.app";
+  const response = await fetch(`http://127.0.0.1:${PORT}/auth/login`, {
+    method: "OPTIONS",
+    headers: {
+      Origin: origin,
+      "Access-Control-Request-Method": "POST",
+      "Access-Control-Request-Headers": "content-type,authorization,x-session-id",
+    },
+  });
+
+  assert.equal(response.status, 204);
+  assert.equal(response.headers.get("access-control-allow-origin"), origin);
+  assert.match(response.headers.get("access-control-allow-methods") || "", /PATCH/);
+  assert.match(response.headers.get("access-control-allow-headers") || "", /Authorization/i);
+  assert.equal(response.headers.get("access-control-allow-credentials"), null);
 });
 
 test("cadastro informa quando o banco ainda não foi configurado", async () => {

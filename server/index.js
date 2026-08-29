@@ -29,17 +29,44 @@ const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 
 const app = express();
 
-const allowedOrigins = (process.env.CORS_ORIGINS || "")
-  .split(",")
-  .map((origin) => origin.trim())
-  .filter(Boolean);
+function normalizeOrigin(origin) {
+  const value = origin.trim().replace(/\/+$/, "");
+  if (!value) return "";
+
+  try {
+    return new URL(value).origin;
+  } catch {
+    return value;
+  }
+}
+
+const allowedOrigins = new Set(
+  [process.env.CORS_ORIGIN, process.env.CORS_ORIGINS]
+    .filter(Boolean)
+    .flatMap((value) => value.split(","))
+    .map(normalizeOrigin)
+    .filter(Boolean)
+);
+
+function isOriginAllowed(origin) {
+  return !origin || allowedOrigins.has(normalizeOrigin(origin));
+}
+
+app.use((req, res, next) => {
+  const origin = req.get("Origin");
+  if (isOriginAllowed(origin)) return next();
+  return res.status(403).json({ error: "Origem não permitida pelo CORS" });
+});
 
 app.use(
   cors({
     origin(origin, callback) {
-      if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
-      return callback(new Error("Origem não permitida pelo CORS"));
+      return callback(null, isOriginAllowed(origin));
     },
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "x-session-id"],
+    credentials: false,
+    optionsSuccessStatus: 204,
   })
 );
 app.use(express.json({ limit: "20mb" }));
