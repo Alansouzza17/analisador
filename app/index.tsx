@@ -4,7 +4,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import * as Linking from "expo-linking";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -47,10 +47,27 @@ function getOAuthRedirectUri(nativePath: string): string {
 }
 
 type AuthResponse = { user: AuthUser; accessToken: string };
+type OAuthCallbackParams = {
+  addAccount?: string | string[];
+  success?: string | string[];
+  session_id?: string | string[];
+  user_id?: string | string[];
+  username?: string | string[];
+  profile_picture_url?: string | string[];
+  error?: string | string[];
+  provider?: string | string[];
+  auth_code?: string | string[];
+};
+
+function firstParam(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
+}
 
 export default function Login() {
   const router = useRouter();
-  const { addAccount } = useLocalSearchParams<{ addAccount?: string }>();
+  const searchParams = useLocalSearchParams<OAuthCallbackParams>();
+  const addAccount = firstParam(searchParams.addAccount);
+  const handledCallbackRef = useRef<string | null>(null);
 
   const [nome, setNome] = useState("");
   const [senha, setSenha] = useState("");
@@ -97,18 +114,21 @@ export default function Login() {
   }
 }, [addAccount, router]);
 
-  const handleDeepLink = useCallback(async (url: string) => {
-    try {
-      const parsed = Linking.parse(url);
-      const success = parsed.queryParams?.success;
-      const sessionId = parsed.queryParams?.session_id;
-      const userId = parsed.queryParams?.user_id;
-      const username = parsed.queryParams?.username;
-      const profilePictureUrl = parsed.queryParams?.profile_picture_url;
-      const error = parsed.queryParams?.error;
-      const provider = parsed.queryParams?.provider;
-      const authCode = parsed.queryParams?.auth_code;
+  const handleOAuthCallback = useCallback(async (params: OAuthCallbackParams) => {
+    const success = firstParam(params.success);
+    const sessionId = firstParam(params.session_id);
+    const userId = firstParam(params.user_id);
+    const username = firstParam(params.username);
+    const profilePictureUrl = firstParam(params.profile_picture_url);
+    const callbackError = firstParam(params.error);
+    const provider = firstParam(params.provider);
+    const authCode = firstParam(params.auth_code);
+    const callbackKey = `${provider || "instagram"}:${authCode || sessionId || callbackError || success || ""}`;
 
+    if (!success || handledCallbackRef.current === callbackKey) return false;
+    handledCallbackRef.current = callbackKey;
+
+    try {
       if (provider === "google" && success === "true" && typeof authCode === "string") {
         const exchange = await apiRequest<{ accessToken: string }>("/auth/google/exchange", {
           method: "POST",
@@ -121,10 +141,11 @@ export default function Login() {
         await AsyncStorage.setItem(USER_STORAGE_KEY, user.name);
         setSubmitting(false);
         router.replace("/home");
-        return;
+        return true;
       }
 
       if (success === "true" && typeof sessionId === "string") {
+        await apiRequest("/me/instagram/profile", { sessionId });
         const storedName = await AsyncStorage.getItem(USER_STORAGE_KEY);
         const nomeSalvo = storedName?.trim() || "Usuário";
 
@@ -143,38 +164,55 @@ export default function Login() {
 
         setSubmitting(false);
         router.replace("/home");
-        return;
+        return true;
       }
 
       if (success === "false") {
         setSubmitting(false);
         Alert.alert(
           "Erro",
-          String(error || "Não foi possível conectar com o Instagram")
+          String(callbackError || "Não foi possível conectar com o Instagram")
         );
-        return;
+        return true;
       }
 
       setSubmitting(false);
+      return true;
     } catch (error) {
-      console.log("Erro ao tratar deep link:", error);
+      console.log("Erro ao concluir autenticação OAuth:", error);
       setSubmitting(false);
+      Alert.alert(
+        "Não foi possível concluir o login",
+        error instanceof Error ? error.message : "Tente novamente."
+      );
+      return true;
     }
   }, [router]);
 
-  useEffect(() => {
-    void verificarLogin();
+  const handleDeepLink = useCallback(async (url: string) => {
+    const parsed = Linking.parse(url);
+    return handleOAuthCallback(parsed.queryParams || {});
+  }, [handleOAuthCallback]);
 
+  useEffect(() => {
     const subscription = Linking.addEventListener("url", ({ url }) => {
       void handleDeepLink(url);
     });
 
-    void Linking.getInitialURL().then((url) => {
-      if (url) void handleDeepLink(url);
-    });
+    void (async () => {
+      const handledRouterCallback = await handleOAuthCallback(searchParams);
+      if (handledRouterCallback) {
+        setLoading(false);
+        return;
+      }
+
+      const initialUrl = await Linking.getInitialURL();
+      const handledInitialUrl = initialUrl ? await handleDeepLink(initialUrl) : false;
+      if (!handledInitialUrl) await verificarLogin();
+    })();
 
     return () => subscription.remove();
-  }, [handleDeepLink, verificarLogin]);
+  }, [handleDeepLink, handleOAuthCallback, searchParams, verificarLogin]);
 
   async function handleEntrar() {
     if (!nome.trim()) {
