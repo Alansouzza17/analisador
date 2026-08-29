@@ -17,7 +17,7 @@ test.before(async () => {
       DATABASE_URL: "",
       GOOGLE_CLIENT_ID: "",
       GOOGLE_CLIENT_SECRET: "",
-      APP_DEEP_LINK: "analisador://instagram-auth",
+      APP_DEEP_LINK: "analisador://",
       INSTAGRAM_CLIENT_ID: "instagram-client-test",
     },
     stdio: ["ignore", "pipe", "pipe"],
@@ -160,7 +160,7 @@ test("Instagram cancelado na web retorna para a Vercel", async () => {
 });
 
 test("Instagram com erro no mobile retorna para o deep link do app", async () => {
-  const redirectBack = "analisador://instagram-auth";
+  const redirectBack = "analisador://";
   const loginResponse = await fetch(
     `http://127.0.0.1:${PORT}/auth/app/instagram/login?redirect_back=${encodeURIComponent(redirectBack)}`
   );
@@ -174,13 +174,13 @@ test("Instagram com erro no mobile retorna para o deep link do app", async () =>
   const location = callbackResponse.headers.get("location");
 
   assert.equal(callbackResponse.status, 302);
-  assert.match(location || "", /^analisador:\/\/instagram-auth\?/);
+  assert.match(location || "", /^analisador:\/\/\?/);
   assert.equal(new URL(location).searchParams.get("success"), "false");
 });
 
 test("OAuth state não pode ser reutilizado", async () => {
   const loginResponse = await fetch(
-    `http://127.0.0.1:${PORT}/auth/app/instagram/login?redirect_back=${encodeURIComponent("analisador://instagram-auth")}`
+    `http://127.0.0.1:${PORT}/auth/app/instagram/login?redirect_back=${encodeURIComponent("analisador://")}`
   );
   const { authUrl } = await loginResponse.json();
   assert.equal(new URL(authUrl).origin, `http://127.0.0.1:${PORT}`);

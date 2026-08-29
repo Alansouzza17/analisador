@@ -22,6 +22,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { AuthUser, clearAuthToken, getAuthToken, saveAuthToken } from "../services/auth-session";
 import { ApiError, apiRequest } from "../services/http";
 import {
+  getActiveSessionId,
   saveConnectedAccount,
 } from "../services/session";
 
@@ -59,23 +60,34 @@ export default function Login() {
 
    const verificarLogin = useCallback(async () => {
   try {
-    const [savedName, authToken] = await Promise.all([
+    const [savedName, authToken, instagramSessionId] = await Promise.all([
       AsyncStorage.getItem(USER_STORAGE_KEY),
       getAuthToken(),
+      getActiveSessionId(),
     ]);
 
     if (savedName && savedName.trim()) {
       setNome(savedName);
     }
 
-    if (authToken && addAccount !== "1") {
+    if (addAccount !== "1" && authToken) {
       try {
         const { user } = await apiRequest<{ user: AuthUser }>("/auth/me", { accessToken: authToken });
         await AsyncStorage.setItem(USER_STORAGE_KEY, user.name);
         router.replace("/home");
+        return;
       } catch (error) {
         if (error instanceof ApiError && error.status === 401) await clearAuthToken();
         else throw error;
+      }
+    }
+
+    if (addAccount !== "1" && instagramSessionId) {
+      try {
+        await apiRequest("/me/instagram/profile", { sessionId: instagramSessionId });
+        router.replace("/home");
+      } catch (error) {
+        if (!(error instanceof ApiError && error.status === 401)) throw error;
       }
     }
   } catch (error) {
@@ -221,7 +233,7 @@ export default function Login() {
       setSubmitting(true);
 
       const authToken = await getAuthToken();
-      const instagramRedirectUri = getOAuthRedirectUri("instagram-auth");
+      const instagramRedirectUri = getOAuthRedirectUri("");
 
       const data = await apiRequest<{ authUrl: string }>(
         `/auth/app/instagram/login?redirect_back=${encodeURIComponent(instagramRedirectUri)}`,

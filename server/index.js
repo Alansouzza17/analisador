@@ -68,6 +68,8 @@ function validateInstagramRedirectBack(value) {
     }
 
     const mobileRedirectUrl = new URL(APP_DEEP_LINK);
+    const mobileRootRedirect = `${mobileRedirectUrl.protocol}//`;
+    if (redirectUrl.href === mobileRootRedirect) return mobileRootRedirect;
     return redirectUrl.href === mobileRedirectUrl.href ? mobileRedirectUrl.href : null;
   } catch {
     return null;
