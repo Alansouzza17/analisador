@@ -774,10 +774,6 @@ app.get("/auth/meta/test-user", async (req, res) => {
 
 app.get("/auth/app/instagram/login", async (req, res) => {
   try {
-    const redirectUri = encodeURIComponent(
-      `${BASE_URL}/auth/app/instagram/callback`
-    );
-
     const requestedRedirectBack =
       typeof req.query.redirect_back === "string" && req.query.redirect_back.trim()
         ? req.query.redirect_back.trim()
@@ -800,13 +796,7 @@ app.get("/auth/app/instagram/login", async (req, res) => {
 
     const state = await oauthStateStore.create({ redirectBack, provider: "instagram", userId });
 
-    const url =
-      `https://www.instagram.com/oauth/authorize` +
-      `?client_id=${process.env.INSTAGRAM_CLIENT_ID}` +
-      `&redirect_uri=${redirectUri}` +
-      `&scope=instagram_business_basic,instagram_business_manage_messages,instagram_business_manage_comments` +
-      `&response_type=code` +
-      `&state=${encodeURIComponent(state)}`;
+    const url = `${BASE_URL}/auth/app/instagram/authorize?state=${encodeURIComponent(state)}`;
 
     return res.json({ authUrl: url });
   } catch (error) {
@@ -815,6 +805,27 @@ app.get("/auth/app/instagram/login", async (req, res) => {
       detalhes: error.message,
     });
   }
+});
+
+// Abre primeiro o domínio da API para evitar que o Safari trate o clique
+// inicial como Universal Link direto para o aplicativo do Instagram.
+app.get("/auth/app/instagram/authorize", (req, res) => {
+  const state = typeof req.query.state === "string" ? req.query.state.trim() : "";
+  if (!state) return res.status(400).json({ error: "Estado OAuth obrigatório" });
+  if (!process.env.INSTAGRAM_CLIENT_ID) {
+    return res.status(503).json({ error: "Login do Instagram não configurado" });
+  }
+
+  const params = new URLSearchParams({
+    client_id: process.env.INSTAGRAM_CLIENT_ID,
+    redirect_uri: `${BASE_URL}/auth/app/instagram/callback`,
+    scope: "instagram_business_basic,instagram_business_manage_messages,instagram_business_manage_comments",
+    response_type: "code",
+    state,
+    force_reauth: "true",
+  });
+
+  return res.redirect(302, `https://www.instagram.com/oauth/authorize?${params}`);
 });
 
 app.get("/auth/app/instagram/callback", async (req, res) => {

@@ -18,6 +18,7 @@ test.before(async () => {
       GOOGLE_CLIENT_ID: "",
       GOOGLE_CLIENT_SECRET: "",
       APP_DEEP_LINK: "analisador://instagram-auth",
+      INSTAGRAM_CLIENT_ID: "instagram-client-test",
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -182,8 +183,15 @@ test("OAuth state não pode ser reutilizado", async () => {
     `http://127.0.0.1:${PORT}/auth/app/instagram/login?redirect_back=${encodeURIComponent("analisador://instagram-auth")}`
   );
   const { authUrl } = await loginResponse.json();
-  assert.equal(new URL(authUrl).origin, "https://www.instagram.com");
+  assert.equal(new URL(authUrl).origin, `http://127.0.0.1:${PORT}`);
   const state = new URL(authUrl).searchParams.get("state");
+
+  const authorizeResponse = await fetch(authUrl, { redirect: "manual" });
+  assert.equal(authorizeResponse.status, 302);
+  assert.equal(
+    new URL(authorizeResponse.headers.get("location")).origin,
+    "https://www.instagram.com"
+  );
 
   const first = await fetch(
     `http://127.0.0.1:${PORT}/auth/app/instagram/callback?state=${state}&error=denied`,
