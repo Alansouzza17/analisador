@@ -28,8 +28,15 @@ import {
 WebBrowser.maybeCompleteAuthSession();
 
 const USER_STORAGE_KEY = "@user_name";
-const REDIRECT_URI = Linking.createURL("instagram-auth");
-const GOOGLE_REDIRECT_URI = Linking.createURL("google-auth");
+const WEB_APP_URL = process.env.EXPO_PUBLIC_WEB_URL?.trim().replace(/\/+$/, "");
+const REDIRECT_URI =
+  Platform.OS === "web"
+    ? WEB_APP_URL || Linking.createURL("")
+    : Linking.createURL("instagram-auth");
+const GOOGLE_REDIRECT_URI =
+  Platform.OS === "web"
+    ? WEB_APP_URL || Linking.createURL("")
+    : Linking.createURL("google-auth");
 
 type AuthResponse = { user: AuthUser; accessToken: string };
 

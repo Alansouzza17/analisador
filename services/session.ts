@@ -20,14 +20,21 @@ const ACCOUNT_SESSION_PREFIX = "instagram_account_session_";
 
 const webSessionStore = new Map<string, string>();
 
+function getWebStorage(): Storage | null {
+  return typeof globalThis.sessionStorage === "undefined" ? null : globalThis.sessionStorage;
+}
+
 async function getSecureValue(key: string): Promise<string | null> {
-  if (Platform.OS === "web") return webSessionStore.get(key) ?? null;
+  if (Platform.OS === "web") {
+    return getWebStorage()?.getItem(key) ?? webSessionStore.get(key) ?? null;
+  }
   return SecureStore.getItemAsync(key);
 }
 
 async function setSecureValue(key: string, value: string): Promise<void> {
   if (Platform.OS === "web") {
     webSessionStore.set(key, value);
+    getWebStorage()?.setItem(key, value);
     return;
   }
   await SecureStore.setItemAsync(key, value);
@@ -36,6 +43,7 @@ async function setSecureValue(key: string, value: string): Promise<void> {
 async function deleteSecureValue(key: string): Promise<void> {
   if (Platform.OS === "web") {
     webSessionStore.delete(key);
+    getWebStorage()?.removeItem(key);
     return;
   }
   await SecureStore.deleteItemAsync(key);
