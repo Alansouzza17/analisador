@@ -25,13 +25,24 @@ import {
   updateContentPlan,
 } from "./content-plans.js";
 import {
+  createCompetitor,
+  deleteCompetitor,
+  listCompetitors,
+  updateCompetitor,
+} from "./competitors.js";
+import {
   calculateGrowth,
   createAccountSnapshot,
   findOwnedInstagramAccount,
   listAccountSnapshots,
+  markInstagramTokenError,
   normalizeSnapshotFilters,
 } from "./instagram-snapshots.js";
+import { validateInstagramSessionOwner } from "./instagram-access.js";
 import { MemoryOneTimeStateStore, MemorySessionStore } from "./session-store.js";
+import { buildOpportunities } from "./opportunities.js";
+import { createRateLimiter } from "./rate-limit.js";
+import { encryptInstagramToken } from "./token-crypto.js";
 
 const PORT = process.env.PORT || 3333;
 const HOST = "0.0.0.0";
@@ -122,6 +133,12 @@ if (sessionStoreDriver !== "memory") {
 }
 const sessionStore = new MemorySessionStore({ ttlMs: SESSION_TTL_MS });
 const oauthStateStore = new MemoryOneTimeStateStore({ ttlMs: OAUTH_STATE_TTL_MS });
+const aiRateLimit = createRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  key: (req) => getSessionIdFromReq(req) || req.ip,
+});
+const snapshotRateLimit = createRateLimiter({ windowMs: 15 * 60 * 1000, max: 10 });
 
 /* ===========================================================
    HELPERS
@@ -279,16 +296,14 @@ function isSessionError(error) {
 async function requireActiveInstagramAccount(req, res, next) {
   try {
     const session = await ensureSession(getSessionIdFromReq(req));
-    if (!session.userId || session.userId !== req.user.id) {
-      return res.status(403).json({ error: "A conta ativa não pertence ao usuário autenticado" });
-    }
-    const instagramUserId = session.profile?.id;
-    if (!instagramUserId) {
-      return res.status(400).json({ error: "A sessão não possui uma conta do Instagram válida" });
-    }
-    const account = await findOwnedInstagramAccount(req.user.id, instagramUserId);
+    const ownership = validateInstagramSessionOwner(session, req.user.id);
+    if (!ownership.ok) return res.status(ownership.status).json({ error: ownership.error });
+    const account = await findOwnedInstagramAccount(req.user.id, ownership.instagramUserId);
     if (!account) {
       return res.status(404).json({ error: "Conta do Instagram não encontrada para este usuário" });
+    }
+    if (account.token_expires_at && new Date(account.token_expires_at) <= new Date()) {
+      return res.status(401).json({ error: "A conexão com o Instagram expirou. Reconecte a conta." });
     }
     req.instagramSession = session;
     req.instagramAccount = account;
@@ -597,7 +612,7 @@ app.get("/instagram/posts", async (req, res) => {
    IA - ANÁLISE DO PERFIL
 =========================================================== */
 
-app.get("/ia/analyze", async (req, res) => {
+app.get("/ia/analyze", aiRateLimit, async (req, res) => {
   try {
     const session = await ensureSession(getSessionIdFromReq(req));
 
@@ -667,7 +682,7 @@ Regras:
    IA - ANÁLISE DE FOTO
 =========================================================== */
 
-app.post("/ia/photo", async (req, res) => {
+app.post("/ia/photo", aiRateLimit, async (req, res) => {
   try {
     await ensureSession(getSessionIdFromReq(req));
     const image = req.body?.image;
@@ -944,13 +959,23 @@ app.get("/auth/app/instagram/callback", async (req, res) => {
     });
 
     if (oauthState.userId) {
+      const encryptedAccessToken = encryptInstagramToken(accessToken);
+      const legacyAccessToken = encryptedAccessToken ? "encrypted:v1" : accessToken;
+      const tokenExpiresAt = Number.isFinite(Number(tokenData.expires_in))
+        ? new Date(Date.now() + Number(tokenData.expires_in) * 1000)
+        : null;
       await query(
         `INSERT INTO instagram_accounts
-          (id, user_id, instagram_user_id, username, access_token)
-         VALUES ($1, $2, $3, $4, $5)
+          (id, user_id, instagram_user_id, username, access_token, access_token_encrypted, token_expires_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
          ON CONFLICT (user_id, instagram_user_id) DO UPDATE SET
-          username = EXCLUDED.username, access_token = EXCLUDED.access_token, updated_at = NOW()`,
-        [randomUUID(), oauthState.userId, String(profileData.id), profileData.username || "instagram", accessToken]
+          username = EXCLUDED.username,
+          access_token = EXCLUDED.access_token,
+          access_token_encrypted = EXCLUDED.access_token_encrypted,
+          token_expires_at = EXCLUDED.token_expires_at,
+          token_last_error_at = NULL,
+          updated_at = NOW()`,
+        [randomUUID(), oauthState.userId, String(profileData.id), profileData.username || "instagram", legacyAccessToken, encryptedAccessToken, tokenExpiresAt]
       );
     }
 
@@ -1029,19 +1054,22 @@ app.post("/auth/app/logout", async (req, res) => {
   }
 });
 
-app.listen(PORT, HOST, () => {
-  console.log(`Servidor rodando em ${BASE_URL}`);
-});
-
 app.post(
   "/me/instagram/snapshots",
   requireUser,
   requireActiveInstagramAccount,
+  snapshotRateLimit,
   async (req, res) => {
+    let profile;
     try {
-      const profile = await fetchJson(
-        `https://graph.instagram.com/me?fields=id,followers_count,follows_count,media_count&access_token=${encodeURIComponent(req.instagramAccount.access_token)}`
-      );
+      try {
+        profile = await fetchJson(
+        `https://graph.instagram.com/me?fields=id,followers_count,follows_count,media_count&access_token=${encodeURIComponent(req.instagramAccount.accessToken)}`
+        );
+      } catch {
+        await markInstagramTokenError(req.instagramAccount.id);
+        return res.status(502).json({ error: "Não foi possível consultar o Instagram. Tente novamente ou reconecte a conta." });
+      }
       if (String(profile.id) !== String(req.instagramAccount.instagram_user_id)) {
         return res.status(409).json({ error: "O token não corresponde à conta ativa" });
       }
@@ -1184,3 +1212,66 @@ app.delete(
     }
   }
 );
+
+function competitorError(res, error) {
+  if (error?.code === "VALIDATION_ERROR") return res.status(400).json({ error: error.message });
+  if (error?.code === "23505") return res.status(409).json({ error: "Este perfil já está cadastrado" });
+  console.error("Erro no cadastro de concorrentes:", error);
+  return res.status(500).json({ error: "Não foi possível concluir a operação" });
+}
+
+app.get("/me/instagram/competitors", requireUser, requireActiveInstagramAccount, async (req, res) => {
+  try {
+    const items = await listCompetitors({ userId: req.user.id, instagramAccountId: req.instagramAccount.id });
+    return res.json({ items, count: items.length, metricsAvailable: false });
+  } catch (error) {
+    return competitorError(res, error);
+  }
+});
+
+app.post("/me/instagram/competitors", requireUser, requireActiveInstagramAccount, async (req, res) => {
+  try {
+    const item = await createCompetitor({ userId: req.user.id, instagramAccountId: req.instagramAccount.id, input: req.body || {} });
+    return res.status(201).json({ item });
+  } catch (error) {
+    return competitorError(res, error);
+  }
+});
+
+app.patch("/me/instagram/competitors/:id", requireUser, requireActiveInstagramAccount, async (req, res) => {
+  try {
+    const item = await updateCompetitor({ id: req.params.id, userId: req.user.id, instagramAccountId: req.instagramAccount.id, input: req.body || {} });
+    if (!item) return res.status(404).json({ error: "Perfil de referência não encontrado" });
+    return res.json({ item });
+  } catch (error) {
+    return competitorError(res, error);
+  }
+});
+
+app.delete("/me/instagram/competitors/:id", requireUser, requireActiveInstagramAccount, async (req, res) => {
+  try {
+    const deleted = await deleteCompetitor({ id: req.params.id, userId: req.user.id, instagramAccountId: req.instagramAccount.id });
+    if (!deleted) return res.status(404).json({ error: "Perfil de referência não encontrado" });
+    return res.status(204).send();
+  } catch (error) {
+    return competitorError(res, error);
+  }
+});
+
+app.get("/me/instagram/opportunities", requireUser, requireActiveInstagramAccount, async (req, res) => {
+  try {
+    const [snapshots, contentPlans] = await Promise.all([
+      listAccountSnapshots({ userId: req.user.id, instagramAccountId: req.instagramAccount.id, limit: 365, days: 90 }),
+      listContentPlans({ userId: req.user.id, instagramAccountId: req.instagramAccount.id, status: null }),
+    ]);
+    const items = buildOpportunities({ snapshots, contentPlans });
+    return res.json({ items, count: items.length, generatedAt: new Date().toISOString(), source: "deterministic-rules" });
+  } catch (error) {
+    console.error("Erro ao gerar oportunidades:", error);
+    return res.status(500).json({ error: "Não foi possível gerar as oportunidades" });
+  }
+});
+
+app.listen(PORT, HOST, () => {
+  console.log(`Servidor rodando em ${BASE_URL}`);
+});

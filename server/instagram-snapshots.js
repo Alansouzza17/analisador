@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { getDb, query } from "./db.js";
+import { encryptInstagramToken, resolveInstagramToken } from "./token-crypto.js";
 
 export const SNAPSHOT_MIN_INTERVAL_MINUTES = 15;
 export const DEFAULT_SNAPSHOT_LIMIT = 30;
@@ -32,12 +33,30 @@ export function normalizeSnapshotFilters(filters = {}) {
 
 export async function findOwnedInstagramAccount(userId, instagramUserId) {
   const result = await query(
-    `SELECT id, user_id, instagram_user_id, access_token
+    `SELECT id, user_id, instagram_user_id, access_token, access_token_encrypted, token_expires_at
      FROM instagram_accounts
      WHERE user_id = $1 AND instagram_user_id = $2`,
     [userId, String(instagramUserId)]
   );
-  return result.rows[0] || null;
+  const account = result.rows[0];
+  if (!account) return null;
+  const accessToken = resolveInstagramToken(account);
+  if (!account.access_token_encrypted) {
+    const encrypted = encryptInstagramToken(accessToken);
+    if (encrypted) {
+      await query(
+        `UPDATE instagram_accounts
+         SET access_token_encrypted = $1, access_token = 'encrypted:v1', updated_at = NOW()
+         WHERE id = $2 AND user_id = $3`,
+        [encrypted, account.id, userId]
+      );
+    }
+  }
+  return { ...account, accessToken };
+}
+
+export async function markInstagramTokenError(accountId) {
+  await query("UPDATE instagram_accounts SET token_last_error_at = NOW() WHERE id = $1", [accountId]);
 }
 
 export async function createAccountSnapshot({ userId, instagramAccountId, profile }) {

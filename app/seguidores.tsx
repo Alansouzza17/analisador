@@ -354,8 +354,9 @@ export default function SeguidoresScreen() {
     color="#7C3AED"
   />
   <Text style={styles.connectWarningText}>
-    Conecte sua conta do Instagram para ver o número de seguidores em tempo real
-    e receber alertas automáticos quando alguém deixar de seguir.
+    As coletas detectam mudanças na contagem total. Para descobrir exatamente
+    quem deixou de seguir, compare duas listas importadas em datas diferentes.
+    A contagem do perfil, sozinha, não identifica nenhum usuário.
   </Text>
 </View>
 
@@ -419,9 +420,9 @@ export default function SeguidoresScreen() {
     color="#2563EB"
   />
   <Text style={styles.infoWarningText}>
-    A quantidade importada pode ser diferente do Instagram. O
-    arquivo pode conter contas desativadas, removidas,
-    bloqueadas ou indisponíveis no momento.
+    Os resultados abaixo usam somente os arquivos importados. A quantidade pode
+    ser diferente do Instagram por contas desativadas, removidas, bloqueadas ou
+    indisponíveis. Nenhum perfil ausente é inferido ou inventado.
   </Text>
 </View>
 

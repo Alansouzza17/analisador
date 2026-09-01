@@ -122,6 +122,11 @@ for (const [method, path] of [
   ["POST", "/me/instagram/content-plans"],
   ["PATCH", "/me/instagram/content-plans/item-1"],
   ["DELETE", "/me/instagram/content-plans/item-1"],
+  ["GET", "/me/instagram/competitors"],
+  ["POST", "/me/instagram/competitors"],
+  ["PATCH", "/me/instagram/competitors/item-1"],
+  ["DELETE", "/me/instagram/competitors/item-1"],
+  ["GET", "/me/instagram/opportunities"],
 ]) {
   test(`${method} ${path} exige autenticação JWT`, async () => {
     const response = await fetch(`http://127.0.0.1:${PORT}${path}`, { method });

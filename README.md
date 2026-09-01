@@ -1,4 +1,4 @@
-# Analisador IA
+# Analisador
 
 Aplicativo Expo/React Native para análise de perfil, conteúdo e listas de
 seguidores do Instagram. O backend Express integra o login OAuth do Instagram
@@ -12,9 +12,11 @@ e a API Gemini.
 
 Usuários e contas conectadas são persistidos no PostgreSQL. O login por e-mail
 usa bcrypt e JWT, armazenado no SecureStore do aparelho. O
-`MemorySessionStore` continua sendo usado somente para a compatibilidade das
-sessões Instagram atuais; reiniciar o servidor exige reconectar o Instagram,
-mas não desconecta a conta principal do usuário.
+`MemorySessionStore` continua sendo usado para compatibilidade das sessões
+Instagram atuais. Reiniciar o servidor invalida o identificador de sessão do
+aplicativo, mas a conexão da conta permanece no PostgreSQL para coletas futuras
+do backend. A restauração completa da sessão do aplicativo ainda exige uma
+etapa separada; o projeto não inventa renovação automática de token.
 
 No aplicativo mobile, identificadores de sessão são armazenados no SecureStore.
 Metadados não sensíveis permanecem no AsyncStorage. Sessões de versões antigas
@@ -24,6 +26,21 @@ Listas importadas de seguidores são separadas por conta ativa para evitar que
 dados de uma conta apareçam ao alternar para outra. Chamadas do aplicativo ao
 backend têm timeout e mensagens amigáveis para falhas de rede e HTTP; respostas
 401 removem automaticamente a sessão inválida do armazenamento local.
+
+Snapshots detectam mudanças na contagem total de seguidores, mas não identificam
+quem deixou de seguir. Essa identificação só é feita comparando duas listas
+exportadas e importadas manualmente. As listas continuam no armazenamento local
+para preservar compatibilidade e nenhum resultado é inferido.
+
+## Limitações da API do Instagram
+
+O fluxo atual usa a API oficial com Instagram Login. A área Concorrentes é um
+cadastro manual: não faz scraping, não usa API privada e não exibe métricas que
+não foram obtidas. A Meta oferece Business Discovery no fluxo distinto com
+Facebook Login, limitado a contas profissionais e sujeito a permissões e análise
+do aplicativo. Como esse não é o fluxo configurado, a consulta não foi implementada.
+
+Referência oficial: https://www.postman.com/meta/instagram/documentation/6yqw8pt/instagram-api
 
 ## Configuração
 
@@ -39,6 +56,19 @@ cd server
 npm ci
 npm run migrate
 ```
+
+Para cifrar tokens do Instagram em repouso, configure
+`INSTAGRAM_TOKEN_ENCRYPTION_KEY` com 32 bytes em Base64. Novas conexões usam
+AES-256-GCM; contas antigas são migradas gradualmente quando acessadas. Guarde a
+chave fora do repositório e faça backup seguro: perdê-la exige reconectar contas.
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+```
+
+Tokens do Instagram não são enviados ao frontend nem registrados em logs. O
+backend não tenta renovar tokens sem suporte explícito da API; expiração conhecida
+e falhas de validação orientam a reconexão.
 
 Para Google, crie um cliente OAuth Web e cadastre
 `<BASE_URL>/auth/google/callback` como URI autorizada. Configure
@@ -92,3 +122,13 @@ npm test
 ```
 
 Migrations disponíveis em `server/migrations/`; o comando aplica todos os arquivos em ordem.
+
+## Deploy
+
+1. Neon: use uma URL direta, sem `-pooler`, e execute `cd server && npm run migrate`.
+2. Render: configure `INSTAGRAM_TOKEN_ENCRYPTION_KEY` antes de publicar o backend.
+3. Render: publique o backend e confirme `/health`; não use variáveis `EXPO_PUBLIC_*` para segredos.
+4. Vercel: mantenha apenas `EXPO_PUBLIC_API_URL` e `EXPO_PUBLIC_WEB_URL` e publique o export web.
+
+As migrations `004_competitor_profiles.sql` e
+`005_instagram_token_encryption.sql` são aditivas e não apagam dados existentes.
