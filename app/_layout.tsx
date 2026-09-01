@@ -20,6 +20,11 @@ export default function RootLayout() {
       <Stack.Screen name="home" />
       <Stack.Screen name="profile" />
       <Stack.Screen name="analysis" />
+      <Stack.Screen name="monitoramento" />
+      <Stack.Screen name="calendario" />
+      <Stack.Screen name="crescimento" />
+      <Stack.Screen name="concorrentes" />
+      <Stack.Screen name="oportunidades" />
     </Stack>
   );
 }

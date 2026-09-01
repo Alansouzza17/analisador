@@ -261,14 +261,14 @@ export default function Home() {
                 styles.actionCard,
                 !hasInstagramConnected && styles.actionCardDisabled,
               ]}
-              onPress={() => abrirRecursoProtegido("/analysis")}
+              onPress={() => abrirRecursoProtegido("/monitoramento")}
             >
               <View style={styles.actionIconBox}>
-                <Ionicons name="analytics-outline" size={24} color="#d62976" />
+                <Ionicons name="pulse-outline" size={24} color="#d62976" />
               </View>
-              <Text style={styles.actionTitle}>Análise IA</Text>
+              <Text style={styles.actionTitle}>Monitoramento</Text>
               <Text style={styles.actionSubtitle}>
-                Gere insights automáticos do perfil
+                Acompanhe alterações e evolução da conta
               </Text>
             </TouchableOpacity>
 
@@ -291,14 +291,14 @@ export default function Home() {
 
             <TouchableOpacity
               style={styles.actionCard}
-              onPress={() => router.push("/Sugestao")}
+              onPress={() => router.push("/calendario" as any)}
             >
               <View style={styles.actionIconBox}>
-                <Ionicons name="image-outline" size={24} color="#d62976" />
+                <Ionicons name="calendar-outline" size={24} color="#d62976" />
               </View>
-              <Text style={styles.actionTitle}>Sugestão</Text>
+              <Text style={styles.actionTitle}>Calendário</Text>
               <Text style={styles.actionSubtitle}>
-                Receba ideias para seus posts
+                Organize conteúdos e datas de publicação
               </Text>
             </TouchableOpacity>
 
@@ -320,19 +320,38 @@ export default function Home() {
                 styles.actionCard,
                 !hasInstagramConnected && styles.actionCardDisabled,
               ]}
-              onPress={() => abrirRecursoProtegido("/metricas")}
+              onPress={() => abrirRecursoProtegido("/crescimento")}
             >
               <View style={styles.actionIconBox}>
                 <Ionicons
-                  name="stats-chart-outline"
+                  name="trending-up-outline"
                   size={24}
                   color="#d62976"
                 />
               </View>
-              <Text style={styles.actionTitle}>Métricas</Text>
+              <Text style={styles.actionTitle}>Crescimento</Text>
               <Text style={styles.actionSubtitle}>
-                Veja score, frequência e desempenho
+                Veja a evolução do perfil ao longo do tempo
               </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.actionCard} onPress={() => router.push("/concorrentes" as any)}>
+              <View style={styles.actionIconBox}>
+                <Ionicons name="trophy-outline" size={24} color="#d62976" />
+              </View>
+              <Text style={styles.actionTitle}>Concorrentes</Text>
+              <Text style={styles.actionSubtitle}>Cadastre e acompanhe perfis de referência</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.actionCard, !hasInstagramConnected && styles.actionCardDisabled]}
+              onPress={() => abrirRecursoProtegido("/oportunidades")}
+            >
+              <View style={styles.actionIconBox}>
+                <Ionicons name="bulb-outline" size={24} color="#d62976" />
+              </View>
+              <Text style={styles.actionTitle}>Oportunidades</Text>
+              <Text style={styles.actionSubtitle}>Descubra ações baseadas no seu histórico</Text>
             </TouchableOpacity>
 
             <TouchableOpacity

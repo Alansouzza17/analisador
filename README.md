@@ -91,4 +91,4 @@ npm run check
 npm test
 ```
 
-Migration disponível: `server/migrations/001_auth.sql`.
+Migrations disponíveis em `server/migrations/`; o comando aplica todos os arquivos em ordem.

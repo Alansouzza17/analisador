@@ -114,6 +114,18 @@ test("perfil protegido retorna contrato JSON e 401 sem sessão", async () => {
   assert.equal(typeof body.error, "string");
 });
 
+for (const [method, path] of [
+  ["POST", "/me/instagram/snapshots"],
+  ["GET", "/me/instagram/snapshots"],
+  ["GET", "/me/instagram/growth"],
+]) {
+  test(`${method} ${path} exige autenticação JWT`, async () => {
+    const response = await fetch(`http://127.0.0.1:${PORT}${path}`, { method });
+    assert.equal(response.status, 401);
+    assert.equal(typeof (await response.json()).error, "string");
+  });
+}
+
 test("OAuth state inválido é rejeitado", async () => {
   const response = await fetch(
     `http://127.0.0.1:${PORT}/auth/app/instagram/callback?state=invalido&error=denied`,

@@ -17,6 +17,13 @@ import {
   verifyAccessToken,
 } from "./auth.js";
 import { query } from "./db.js";
+import {
+  calculateGrowth,
+  createAccountSnapshot,
+  findOwnedInstagramAccount,
+  listAccountSnapshots,
+  normalizeSnapshotFilters,
+} from "./instagram-snapshots.js";
 import { MemoryOneTimeStateStore, MemorySessionStore } from "./session-store.js";
 
 const PORT = process.env.PORT || 3333;
@@ -260,6 +267,31 @@ async function ensureSession(sessionId) {
 
 function isSessionError(error) {
   return error instanceof Error && error.message === "Sessão inválida ou expirada";
+}
+
+async function requireActiveInstagramAccount(req, res, next) {
+  try {
+    const session = await ensureSession(getSessionIdFromReq(req));
+    if (!session.userId || session.userId !== req.user.id) {
+      return res.status(403).json({ error: "A conta ativa não pertence ao usuário autenticado" });
+    }
+    const instagramUserId = session.profile?.id;
+    if (!instagramUserId) {
+      return res.status(400).json({ error: "A sessão não possui uma conta do Instagram válida" });
+    }
+    const account = await findOwnedInstagramAccount(req.user.id, instagramUserId);
+    if (!account) {
+      return res.status(404).json({ error: "Conta do Instagram não encontrada para este usuário" });
+    }
+    req.instagramSession = session;
+    req.instagramAccount = account;
+    return next();
+  } catch (error) {
+    if (isSessionError(error)) {
+      return res.status(401).json({ error: "Sessão do Instagram inválida ou expirada" });
+    }
+    return next(error);
+  }
 }
 
 async function fetchJson(url, options = {}) {
@@ -993,3 +1025,68 @@ app.post("/auth/app/logout", async (req, res) => {
 app.listen(PORT, HOST, () => {
   console.log(`Servidor rodando em ${BASE_URL}`);
 });
+
+app.post(
+  "/me/instagram/snapshots",
+  requireUser,
+  requireActiveInstagramAccount,
+  async (req, res) => {
+    try {
+      const profile = await fetchJson(
+        `https://graph.instagram.com/me?fields=id,followers_count,follows_count,media_count&access_token=${encodeURIComponent(req.instagramAccount.access_token)}`
+      );
+      if (String(profile.id) !== String(req.instagramAccount.instagram_user_id)) {
+        return res.status(409).json({ error: "O token não corresponde à conta ativa" });
+      }
+      const result = await createAccountSnapshot({
+        userId: req.user.id,
+        instagramAccountId: req.instagramAccount.id,
+        profile,
+      });
+      return res.status(result.created ? 201 : 200).json(result);
+    } catch (error) {
+      console.error("Erro POST /me/instagram/snapshots:", error);
+      return res.status(500).json({ error: "Não foi possível registrar o snapshot da conta" });
+    }
+  }
+);
+
+app.get(
+  "/me/instagram/snapshots",
+  requireUser,
+  requireActiveInstagramAccount,
+  async (req, res) => {
+    try {
+      const filters = normalizeSnapshotFilters(req.query);
+      const snapshots = await listAccountSnapshots({
+        userId: req.user.id,
+        instagramAccountId: req.instagramAccount.id,
+        ...filters,
+      });
+      return res.json({ snapshots, count: snapshots.length, filters });
+    } catch (error) {
+      console.error("Erro GET /me/instagram/snapshots:", error);
+      return res.status(500).json({ error: "Não foi possível consultar o histórico da conta" });
+    }
+  }
+);
+
+app.get(
+  "/me/instagram/growth",
+  requireUser,
+  requireActiveInstagramAccount,
+  async (req, res) => {
+    try {
+      const filters = normalizeSnapshotFilters(req.query);
+      const snapshots = await listAccountSnapshots({
+        userId: req.user.id,
+        instagramAccountId: req.instagramAccount.id,
+        ...filters,
+      });
+      return res.json({ ...calculateGrowth(snapshots), filters });
+    } catch (error) {
+      console.error("Erro GET /me/instagram/growth:", error);
+      return res.status(500).json({ error: "Não foi possível calcular o crescimento da conta" });
+    }
+  }
+);

@@ -1,12 +1,18 @@
 import "dotenv/config";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { closeDb, query } from "./db.js";
 
-const migration = await readFile(new URL("./migrations/001_auth.sql", import.meta.url), "utf8");
-
 try {
-  await query(migration);
-  console.log("Migration 001_auth aplicada com sucesso.");
+  const migrationsUrl = new URL("./migrations/", import.meta.url);
+  const migrationFiles = (await readdir(migrationsUrl))
+    .filter((file) => /^\d+_.+\.sql$/.test(file))
+    .sort();
+
+  for (const file of migrationFiles) {
+    const migration = await readFile(new URL(file, migrationsUrl), "utf8");
+    await query(migration);
+    console.log(`Migration ${file} aplicada com sucesso.`);
+  }
 } finally {
   await closeDb();
 }
