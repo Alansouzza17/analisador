@@ -32,6 +32,16 @@ test("crescimento ordena por data e calcula diferenças", () => {
   assert.deepEqual(growth.followers, { start: 100, end: 120, absolute: 20, percentage: 20 });
   assert.deepEqual(growth.follows, { start: 50, end: 40, absolute: -10, percentage: -20 });
   assert.deepEqual(growth.media, { start: 10, end: 12, absolute: 2, percentage: 20 });
+  assert.deepEqual(growth.followersActivity, { gained: 20, lost: 0, net: 20 });
+});
+
+test("crescimento acumula ganhos e perdas entre coletas", () => {
+  const growth = calculateGrowth([
+    { capturedAt: "2026-01-01T00:00:00Z", followersCount: 100, followsCount: 1, mediaCount: 1 },
+    { capturedAt: "2026-01-02T00:00:00Z", followersCount: 112, followsCount: 1, mediaCount: 1 },
+    { capturedAt: "2026-01-03T00:00:00Z", followersCount: 107, followsCount: 1, mediaCount: 1 },
+  ]);
+  assert.deepEqual(growth.followersActivity, { gained: 12, lost: 5, net: 7 });
 });
 
 test("variação percentual é nula quando a base é zero", () => {

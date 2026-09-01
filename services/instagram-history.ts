@@ -14,6 +14,17 @@ export type InstagramSnapshot = {
 
 export type GrowthMetric = { start: number; end: number; absolute: number; percentage: number | null };
 
+export type InstagramGrowth = {
+  sufficientData: boolean;
+  message: string | null;
+  snapshotCount: number;
+  period: { from: string; to: string } | null;
+  followers: GrowthMetric | null;
+  follows: GrowthMetric | null;
+  media: GrowthMetric | null;
+  followersActivity: { gained: number; lost: number; net: number } | null;
+};
+
 async function credentials() {
   const [accessToken, sessionId] = await Promise.all([getAuthToken(), getActiveSessionId()]);
   if (!accessToken) throw new Error("Entre na sua conta para acessar o histórico.");
@@ -36,13 +47,5 @@ export async function getSnapshots(days = 30, limit = 30) {
 }
 
 export async function getGrowth(days = 30) {
-  return apiRequest<{
-    sufficientData: boolean;
-    message: string | null;
-    snapshotCount: number;
-    period: { from: string; to: string } | null;
-    followers: GrowthMetric | null;
-    follows: GrowthMetric | null;
-    media: GrowthMetric | null;
-  }>(`/me/instagram/growth?days=${days}&limit=365`, await credentials());
+  return apiRequest<InstagramGrowth>(`/me/instagram/growth?days=${days}&limit=365`, await credentials());
 }

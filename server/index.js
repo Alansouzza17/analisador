@@ -18,6 +18,13 @@ import {
 } from "./auth.js";
 import { query } from "./db.js";
 import {
+  CONTENT_STATUSES,
+  createContentPlan,
+  deleteContentPlan,
+  listContentPlans,
+  updateContentPlan,
+} from "./content-plans.js";
+import {
   calculateGrowth,
   createAccountSnapshot,
   findOwnedInstagramAccount,
@@ -1087,6 +1094,93 @@ app.get(
     } catch (error) {
       console.error("Erro GET /me/instagram/growth:", error);
       return res.status(500).json({ error: "Não foi possível calcular o crescimento da conta" });
+    }
+  }
+);
+
+function contentPlanError(res, error) {
+  if (error?.code === "VALIDATION_ERROR") {
+    return res.status(400).json({ error: error.message });
+  }
+  console.error("Erro no calendário de conteúdo:", error);
+  return res.status(500).json({ error: "Não foi possível concluir a operação do calendário" });
+}
+
+app.get(
+  "/me/instagram/content-plans",
+  requireUser,
+  requireActiveInstagramAccount,
+  async (req, res) => {
+    try {
+      const status = typeof req.query.status === "string" ? req.query.status.trim() : "";
+      if (status && !CONTENT_STATUSES.includes(status)) {
+        return res.status(400).json({ error: "Status inválido" });
+      }
+      const items = await listContentPlans({
+        userId: req.user.id,
+        instagramAccountId: req.instagramAccount.id,
+        status: status || null,
+      });
+      return res.json({ items, count: items.length });
+    } catch (error) {
+      return contentPlanError(res, error);
+    }
+  }
+);
+
+app.post(
+  "/me/instagram/content-plans",
+  requireUser,
+  requireActiveInstagramAccount,
+  async (req, res) => {
+    try {
+      const item = await createContentPlan({
+        userId: req.user.id,
+        instagramAccountId: req.instagramAccount.id,
+        input: req.body || {},
+      });
+      return res.status(201).json({ item });
+    } catch (error) {
+      return contentPlanError(res, error);
+    }
+  }
+);
+
+app.patch(
+  "/me/instagram/content-plans/:id",
+  requireUser,
+  requireActiveInstagramAccount,
+  async (req, res) => {
+    try {
+      const item = await updateContentPlan({
+        id: req.params.id,
+        userId: req.user.id,
+        instagramAccountId: req.instagramAccount.id,
+        input: req.body || {},
+      });
+      if (!item) return res.status(404).json({ error: "Conteúdo não encontrado" });
+      return res.json({ item });
+    } catch (error) {
+      return contentPlanError(res, error);
+    }
+  }
+);
+
+app.delete(
+  "/me/instagram/content-plans/:id",
+  requireUser,
+  requireActiveInstagramAccount,
+  async (req, res) => {
+    try {
+      const deleted = await deleteContentPlan({
+        id: req.params.id,
+        userId: req.user.id,
+        instagramAccountId: req.instagramAccount.id,
+      });
+      if (!deleted) return res.status(404).json({ error: "Conteúdo não encontrado" });
+      return res.status(204).send();
+    } catch (error) {
+      return contentPlanError(res, error);
     }
   }
 );

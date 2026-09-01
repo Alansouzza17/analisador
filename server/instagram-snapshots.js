@@ -104,6 +104,7 @@ export function calculateGrowth(snapshots) {
       followers: null,
       follows: null,
       media: null,
+      followersActivity: null,
     };
   }
   const ordered = [...snapshots].sort(
@@ -111,6 +112,13 @@ export function calculateGrowth(snapshots) {
   );
   const first = ordered[0];
   const last = ordered[ordered.length - 1];
+  let gained = 0;
+  let lost = 0;
+  for (let index = 1; index < ordered.length; index += 1) {
+    const change = ordered[index].followersCount - ordered[index - 1].followersCount;
+    if (change > 0) gained += change;
+    if (change < 0) lost += Math.abs(change);
+  }
   return {
     sufficientData: true,
     message: null,
@@ -119,5 +127,6 @@ export function calculateGrowth(snapshots) {
     followers: metricGrowth(first, last, "followersCount"),
     follows: metricGrowth(first, last, "followsCount"),
     media: metricGrowth(first, last, "mediaCount"),
+    followersActivity: { gained, lost, net: last.followersCount - first.followersCount },
   };
 }
