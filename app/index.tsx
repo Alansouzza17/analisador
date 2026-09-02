@@ -280,6 +280,11 @@ export default function Login() {
 
       if (!data?.authUrl) throw new Error("Falha ao iniciar login com Instagram");
 
+      if (Platform.OS === "web") {
+        window.location.assign(data.authUrl);
+        return;
+      }
+
       const result = await WebBrowser.openAuthSessionAsync(
         data.authUrl,
         instagramRedirectUri
