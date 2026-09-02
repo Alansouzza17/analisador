@@ -214,6 +214,14 @@ export default function Login() {
     return () => subscription.remove();
   }, [handleDeepLink, handleOAuthCallback, searchParams, verificarLogin]);
 
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof window === "undefined") return;
+
+    const handlePageShow = () => setSubmitting(false);
+    window.addEventListener("pageshow", handlePageShow);
+    return () => window.removeEventListener("pageshow", handlePageShow);
+  }, []);
+
   async function handleEntrar() {
     if (!nome.trim()) {
       Alert.alert("Atenção", "Digite seu e-mail ou nome de usuário.");
@@ -281,6 +289,7 @@ export default function Login() {
       if (!data?.authUrl) throw new Error("Falha ao iniciar login com Instagram");
 
       if (Platform.OS === "web") {
+        setSubmitting(false);
         window.location.assign(data.authUrl);
         return;
       }
