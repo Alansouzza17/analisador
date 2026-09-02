@@ -39,7 +39,11 @@ import {
   normalizeSnapshotFilters,
 } from "./instagram-snapshots.js";
 import { validateInstagramSessionOwner } from "./instagram-access.js";
-import { MemoryOneTimeStateStore, MemorySessionStore } from "./session-store.js";
+import {
+  MemoryOneTimeStateStore,
+  MemorySessionStore,
+  PostgresOneTimeStateStore,
+} from "./session-store.js";
 import { buildOpportunities } from "./opportunities.js";
 import { createRateLimiter } from "./rate-limit.js";
 import { encryptInstagramToken } from "./token-crypto.js";
@@ -132,7 +136,9 @@ if (sessionStoreDriver !== "memory") {
   throw new Error(`SESSION_STORE não suportado: ${sessionStoreDriver}`);
 }
 const sessionStore = new MemorySessionStore({ ttlMs: SESSION_TTL_MS });
-const oauthStateStore = new MemoryOneTimeStateStore({ ttlMs: OAUTH_STATE_TTL_MS });
+const oauthStateStore = process.env.DATABASE_URL
+  ? new PostgresOneTimeStateStore({ ttlMs: OAUTH_STATE_TTL_MS, queryFn: query })
+  : new MemoryOneTimeStateStore({ ttlMs: OAUTH_STATE_TTL_MS });
 const aiRateLimit = createRateLimiter({
   windowMs: 15 * 60 * 1000,
   max: 10,

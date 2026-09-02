@@ -78,3 +78,35 @@ export class MemoryOneTimeStateStore {
     return entry.value;
   }
 }
+
+export class PostgresOneTimeStateStore {
+  constructor({ ttlMs, queryFn }) {
+    this.ttlMs = ttlMs;
+    this.query = queryFn;
+  }
+
+  async create(value) {
+    const id = randomUUID();
+    const expiresAt = new Date(Date.now() + this.ttlMs);
+
+    await this.query(
+      `INSERT INTO oauth_states (id, value, expires_at) VALUES ($1, $2::jsonb, $3)`,
+      [id, JSON.stringify(value), expiresAt]
+    );
+    return id;
+  }
+
+  async consume(id) {
+    if (!id || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) {
+      return null;
+    }
+
+    const result = await this.query(
+      `DELETE FROM oauth_states
+       WHERE id = $1 AND expires_at > NOW()
+       RETURNING value`,
+      [id]
+    );
+    return result.rows[0]?.value || null;
+  }
+}

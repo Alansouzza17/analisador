@@ -130,5 +130,7 @@ Migrations disponíveis em `server/migrations/`; o comando aplica todos os arqui
 3. Render: publique o backend e confirme `/health`; não use variáveis `EXPO_PUBLIC_*` para segredos.
 4. Vercel: mantenha apenas `EXPO_PUBLIC_API_URL` e `EXPO_PUBLIC_WEB_URL` e publique o export web.
 
-As migrations `004_competitor_profiles.sql` e
-`005_instagram_token_encryption.sql` são aditivas e não apagam dados existentes.
+As migrations `004_competitor_profiles.sql`, `005_instagram_token_encryption.sql`
+e `006_oauth_states.sql` são aditivas e não apagam dados existentes. A migration
+`006` mantém o estado temporário do OAuth válido durante reinicializações ou trocas
+de instância do backend.

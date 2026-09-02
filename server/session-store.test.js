@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { MemoryOneTimeStateStore, MemorySessionStore } from "./session-store.js";
+import {
+  MemoryOneTimeStateStore,
+  MemorySessionStore,
+  PostgresOneTimeStateStore,
+} from "./session-store.js";
 
 test("cria e recupera uma sessão válida", async () => {
   const store = new MemorySessionStore({ ttlMs: 1_000 });
@@ -61,4 +65,24 @@ test("OAuth state expirado é rejeitado", async () => {
 
   now = 1_101;
   assert.equal(await store.consume(id), null);
+});
+
+test("OAuth state persistente é criado e consumido atomicamente", async () => {
+  const calls = [];
+  const queryFn = async (text, params) => {
+    calls.push({ text, params });
+    if (text.includes("RETURNING value")) {
+      return { rows: [{ value: { redirectBack: "https://app.example" } }] };
+    }
+    return { rows: [] };
+  };
+  const store = new PostgresOneTimeStateStore({ ttlMs: 1_000, queryFn });
+  const id = await store.create({ redirectBack: "https://app.example" });
+
+  assert.match(id, /^[0-9a-f-]{36}$/);
+  assert.equal(calls[0].params[0], id);
+  assert.equal(calls[0].params[1], JSON.stringify({ redirectBack: "https://app.example" }));
+  assert.deepEqual(await store.consume(id), { redirectBack: "https://app.example" });
+  assert.match(calls[1].text, /DELETE FROM oauth_states/);
+  assert.match(calls[1].text, /expires_at > NOW\(\)/);
 });
