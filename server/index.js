@@ -416,6 +416,10 @@ function databaseError(res, error) {
   if (error?.code === "DATABASE_NOT_CONFIGURED") {
     return res.status(503).json({ error: "Banco de dados não configurado" });
   }
+  if (error?.code === "DATABASE_INVALID") {
+    console.error("Configuração inválida do banco de dados:", error.message);
+    return res.status(503).json({ error: "Banco de dados configurado incorretamente" });
+  }
   console.error("Erro de autenticação:", error);
   return res.status(500).json({ error: "Não foi possível concluir a autenticação" });
 }

@@ -21,12 +21,43 @@ const ACCOUNT_SESSION_PREFIX = "instagram_account_session_";
 const webSessionStore = new Map<string, string>();
 
 function getWebStorage(): Storage | null {
-  return typeof globalThis.sessionStorage === "undefined" ? null : globalThis.sessionStorage;
+  if (Platform.OS !== "web") return null;
+
+  try {
+    return typeof globalThis.localStorage === "undefined" ? null : globalThis.localStorage;
+  } catch {
+    return null;
+  }
+}
+
+function getLegacyWebStorage(): Storage | null {
+  if (Platform.OS !== "web") return null;
+
+  try {
+    return typeof globalThis.sessionStorage === "undefined" ? null : globalThis.sessionStorage;
+  } catch {
+    return null;
+  }
 }
 
 async function getSecureValue(key: string): Promise<string | null> {
   if (Platform.OS === "web") {
-    return getWebStorage()?.getItem(key) ?? webSessionStore.get(key) ?? null;
+    const storage = getWebStorage();
+    const current = storage?.getItem(key) ?? webSessionStore.get(key) ?? null;
+
+    if (current) return current;
+
+    const legacyStorage = getLegacyWebStorage();
+    const legacy = legacyStorage?.getItem(key) ?? null;
+
+    if (legacy) {
+      storage?.setItem(key, legacy);
+      legacyStorage?.removeItem(key);
+      webSessionStore.set(key, legacy);
+      return legacy;
+    }
+
+    return null;
   }
   return SecureStore.getItemAsync(key);
 }
@@ -44,6 +75,7 @@ async function deleteSecureValue(key: string): Promise<void> {
   if (Platform.OS === "web") {
     webSessionStore.delete(key);
     getWebStorage()?.removeItem(key);
+    getLegacyWebStorage()?.removeItem(key);
     return;
   }
   await SecureStore.deleteItemAsync(key);
