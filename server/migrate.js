@@ -2,6 +2,12 @@ import "dotenv/config";
 import { readdir, readFile } from "node:fs/promises";
 import { closeDb, query } from "./db.js";
 
+// A aplicacao usa a URL pooled, mas migrations precisam de uma conexao direta.
+// Em ambientes que fornecem apenas DATABASE_URL, mantemos compatibilidade.
+if (process.env.DATABASE_URL_UNPOOLED) {
+  process.env.DATABASE_URL = process.env.DATABASE_URL_UNPOOLED;
+}
+
 try {
   const migrationsUrl = new URL("./migrations/", import.meta.url);
   const migrationFiles = (await readdir(migrationsUrl))

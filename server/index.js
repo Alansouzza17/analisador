@@ -398,6 +398,16 @@ function healthResponse(req, res) {
   });
 }
 
+async function readinessResponse(_req, res) {
+  try {
+    await query("SELECT 1");
+    return res.json({ ok: true, database: "connected" });
+  } catch (error) {
+    console.error("Banco de dados indisponivel no readiness check:", error);
+    return res.status(503).json({ ok: false, database: "unavailable" });
+  }
+}
+
 function authResponse(user) {
   return { user: publicUser(user), accessToken: createAccessToken(user) };
 }
@@ -577,6 +587,7 @@ app.post("/auth/google/exchange", async (req, res) => {
 
 app.get("/", healthResponse);
 app.get("/health", healthResponse);
+app.get("/ready", readinessResponse);
 
 /* ===========================================================
    INSTAGRAM FIXO
